@@ -112,10 +112,11 @@
   .view-toggle button{border:none; background:transparent; color:#B9CBC7; padding:5px 11px; border-radius:6px; font-size:11px; font-weight:700;}
   .view-toggle button.active{background:var(--gold-500); color:var(--teal-950);}
 
-  .app-frame{max-width:1180px; margin:0 auto;}
+  .app-frame{width:100%;}
   body.mode-mobile .app-frame{max-width:430px; box-shadow:0 0 40px rgba(0,0,0,.15); margin:0 auto;}
-  .shell{display:grid; grid-template-columns:240px 1fr; min-height:calc(100vh - 40px);}
+  .shell{display:grid; grid-template-columns:250px 1fr; min-height:calc(100vh - 40px);}
   body.mode-mobile .shell{grid-template-columns:1fr;}
+  .main{max-width:1400px;}
 
   .sidebar{background:var(--teal-950); color:var(--teal-100); padding:24px 18px; display:flex; flex-direction:column; position:relative; overflow:hidden;}
   .sidebar::before{content:""; position:absolute; inset:0; background-image:radial-gradient(circle at 1px 1px, rgba(201,162,39,.25) 1px, transparent 0); background-size:20px 20px; opacity:.5; pointer-events:none;}
@@ -200,6 +201,30 @@
 
   .placeholder-panel{border:1.5px dashed var(--line); border-radius:14px; padding:40px 20px; text-align:center; color:#8A9895;}
   .placeholder-panel strong{color:var(--teal-900); display:block; font-family:'Amiri',serif; font-size:16px; margin-bottom:4px;}
+
+  .tabs{display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap;}
+  .tab-btn{border:1.5px solid var(--line); background:#fff; padding:8px 15px; border-radius:100px; font-size:13px; font-weight:700; color:var(--teal-900);}
+  .tab-btn.active{background:var(--teal-900); color:#fff; border-color:var(--teal-900);}
+
+  .pill-in{background:#E7F2E9; color:var(--green-700);} .pill-out{background:#F7E9E5; color:var(--red-600);}
+
+  .modal-overlay{display:none; position:fixed; inset:0; background:rgba(10,46,42,.55); align-items:center; justify-content:center; padding:20px; z-index:150;}
+  .modal-overlay.active{display:flex;}
+  .modal{background:var(--paper); border-radius:16px; padding:26px; width:100%; max-width:460px; max-height:88vh; overflow-y:auto; box-shadow:0 30px 70px -20px rgba(0,0,0,.4);}
+  .modal h3{margin:0 0 18px; font-size:18px; color:var(--teal-950);}
+  .modal-actions{display:flex; gap:10px; margin-top:20px;}
+  .modal-actions .btn{flex:1;}
+  .radio-row{display:flex; gap:16px; margin-bottom:4px;}
+  .radio-row label{display:flex; align-items:center; gap:6px; font-size:13.5px; font-weight:600; color:var(--teal-900);}
+
+  .qurban-unit{border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:14px;}
+  .qurban-unit .qu-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;}
+  .qurban-unit h4{font-size:15px; color:var(--teal-950);}
+  .progress-bar{height:9px; background:var(--teal-50); border-radius:100px; overflow:hidden; margin:7px 0;}
+  .progress-fill{height:100%; background:linear-gradient(90deg,var(--gold-500),var(--gold-400)); border-radius:100px;}
+  .qu-meta{font-size:12px; color:#6B7C79; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px;}
+
+  .lock-note{background:var(--teal-50); border-radius:12px; padding:12px 16px; font-size:13px; color:#3E4E4B; margin-bottom:14px;}
 </style>
 </head>
 <body class="mode-auto">
@@ -334,6 +359,10 @@
   <div class="mmore-panel"><h3 style="font-size:14px; color:var(--teal-950); margin-bottom:12px;">Semua Menu</h3><div id="more-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:9px;"></div></div>
 </div>
 
+<div class="modal-overlay" id="generic-modal">
+  <div class="modal" id="generic-modal-content"></div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -342,7 +371,7 @@ import {
   getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where,
+  getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, orderBy,
   onSnapshot, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -648,8 +677,300 @@ async function renderView(){
   const main = $("#main-content");
   if(currentView === "dashboard"){ main.innerHTML = viewDashboard(); loadJadwalSholat(); return; }
   if(currentView === "user"){ main.innerHTML = "<div class='topbar'><div><p class='eyebrow'>Administrasi Sistem</p><h1>Kelola User</h1></div></div><div id='user-panel'></div>"; renderUserManagement(); return; }
+  if(currentView === "keuangan"){ initKeuanganView(); return; }
   main.innerHTML = placeholderModule(ALL_MENUS.find(m=>m.id===currentView)?.label || currentView);
 }
+
+/* ================= MODAL HELPERS ================= */
+function openModal(html){
+  $("#generic-modal-content").innerHTML = html;
+  $("#generic-modal").classList.add("active");
+}
+function closeModal(){ $("#generic-modal").classList.remove("active"); }
+$("#generic-modal").addEventListener("click",(e)=>{ if(e.target.id==="generic-modal") closeModal(); });
+
+/* ================= KEUANGAN MODULE ================= */
+const fmtRp = n => "Rp " + (Number(n)||0).toLocaleString("id-ID");
+let keuTab = "transaksi";
+let keuTransaksi = [];
+let keuUnsub = null;
+let qurbanUnits = [];
+let qurbanUnsub = null;
+let tutupBukuList = [];
+let tutupBukuUnsub = null;
+
+function canEditKeuangan(){
+  const r = currentUserDoc.roles || [];
+  return r.includes("godmode") || r.includes("admin") || r.includes("bendahara") || r.includes("ketua");
+}
+function currentPeriode(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+}
+function isPeriodeClosed(periode){
+  return tutupBukuList.some(t => t.id === periode);
+}
+
+function initKeuanganView(){
+  const main = $("#main-content");
+  main.innerHTML = `
+    <div class="topbar">
+      <div><p class="eyebrow">Kas Masjid</p><h1>Keuangan</h1><p class="desc">Infaq, zakat, pengeluaran &amp; arisan qurban</p></div>
+      ${canEditKeuangan() ? `<button class="btn btn-gold" id="btn-add-transaksi">+ Catat Transaksi</button>` : ``}
+    </div>
+    <div class="stat-grid" id="keu-stats"></div>
+    <div class="panel">
+      <div class="tabs">
+        <button class="tab-btn ${keuTab==='transaksi'?'active':''}" data-tab="transaksi">Riwayat Transaksi</button>
+        <button class="tab-btn ${keuTab==='qurban'?'active':''}" data-tab="qurban">Arisan Qurban</button>
+        <button class="tab-btn ${keuTab==='tutup'?'active':''}" data-tab="tutup">Tutup Buku</button>
+      </div>
+      <div id="keu-tab-content"><div class="empty-state"><p>Memuat…</p></div></div>
+    </div>
+  `;
+  $$(".tabs .tab-btn").forEach(b=>b.addEventListener("click", ()=>{ keuTab=b.dataset.tab; $$(".tabs .tab-btn").forEach(x=>x.classList.remove("active")); b.classList.add("active"); renderKeuTabContent(); }));
+  $("#btn-add-transaksi")?.addEventListener("click", openTransaksiModal);
+
+  if(keuUnsub) keuUnsub();
+  keuUnsub = onSnapshot(query(collection(db,"keuangan"), orderBy("tanggal","desc")), (snap)=>{
+    keuTransaksi = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderKeuStats();
+    if(keuTab==="transaksi") renderKeuTabContent();
+  });
+  if(qurbanUnsub) qurbanUnsub();
+  qurbanUnsub = onSnapshot(collection(db,"qurban_unit"), (snap)=>{
+    qurbanUnits = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    if(keuTab==="qurban") renderKeuTabContent();
+  });
+  if(tutupBukuUnsub) tutupBukuUnsub();
+  tutupBukuUnsub = onSnapshot(collection(db,"tutup_buku"), (snap)=>{
+    tutupBukuList = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    if(keuTab==="tutup") renderKeuTabContent();
+  });
+}
+
+function renderKeuStats(){
+  const el = $("#keu-stats");
+  if(!el) return;
+  let masuk=0, keluar=0;
+  keuTransaksi.forEach(t=>{ if(t.jenis==="masuk") masuk+=Number(t.jumlah||0); else keluar+=Number(t.jumlah||0); });
+  el.innerHTML = `
+    <div class="stat-card"><div class="label">Saldo</div><div class="value">${fmtRp(masuk-keluar)}</div></div>
+    <div class="stat-card"><div class="label">Pemasukan</div><div class="value" style="color:var(--green-700)">${fmtRp(masuk)}</div></div>
+    <div class="stat-card"><div class="label">Pengeluaran</div><div class="value" style="color:var(--red-600)">${fmtRp(keluar)}</div></div>
+  `;
+}
+
+function renderKeuTabContent(){
+  const el = $("#keu-tab-content");
+  if(!el) return;
+  if(keuTab === "transaksi") return renderTransaksiTab(el);
+  if(keuTab === "qurban") return renderQurbanTab(el);
+  if(keuTab === "tutup") return renderTutupBukuTab(el);
+}
+
+function renderTransaksiTab(el){
+  if(keuTransaksi.length===0){ el.innerHTML = emptyState("Belum ada transaksi","Catat pemasukan atau pengeluaran pertama."); return; }
+  el.innerHTML = `<div class="table-scroll"><table>
+    <thead><tr><th>Tanggal</th><th>Jenis</th><th>Kategori</th><th>Nama</th><th>Jumlah</th><th>Status</th></tr></thead>
+    <tbody>${keuTransaksi.map(t=>{
+      const closed = isPeriodeClosed((t.tanggal||"").slice(0,7));
+      return `<tr>
+        <td>${t.tanggal}</td>
+        <td><span class="pill ${t.jenis==='masuk'?'pill-in':'pill-out'}">${t.jenis==='masuk'?'Masuk':'Keluar'}</span></td>
+        <td>${labelKategori(t.kategori)}</td>
+        <td>${t.nama||"-"}</td>
+        <td class="mono">${fmtRp(t.jumlah)}</td>
+        <td>${closed?'<span class="pill pill-ok">Terkunci</span>':'<span class="pill pill-wait">Berjalan</span>'}</td>
+      </tr>`;
+    }).join("")}</tbody>
+  </table></div>`;
+}
+function labelKategori(k){
+  return {infaq:"Infaq/Donasi", zakat:"Zakat", pengeluaran:"Pengeluaran"}[k] || k;
+}
+
+function renderQurbanTab(el){
+  const canEdit = canEditKeuangan();
+  el.innerHTML = `
+    ${canEdit ? `<button class="btn btn-gold btn-sm" id="btn-add-qurban-unit" style="margin-bottom:14px;">+ Tambah Unit Hewan</button>` : ``}
+    <div id="qurban-list">${qurbanUnits.length===0 ? emptyState("Belum ada Arisan Qurban","Tambahkan unit hewan qurban pertama.") : ""}</div>
+  `;
+  $("#btn-add-qurban-unit")?.addEventListener("click", openQurbanUnitModal);
+  const list = $("#qurban-list");
+  qurbanUnits.forEach(q=>{
+    const pct = q.target ? Math.min(100, Math.round((q.terkumpul||0)/q.target*100)) : 0;
+    const perOrang = q.peserta ? Math.round(q.target/q.peserta) : 0;
+    const card = document.createElement("div");
+    card.className = "qurban-unit";
+    card.innerHTML = `
+      <div class="qu-head"><h4>${q.nama}</h4><span class="pill pill-wait">${pct}%</span></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+      <div class="qu-meta"><span>${fmtRp(q.terkumpul||0)} / ${fmtRp(q.target)}</span><span>${q.peserta} peserta · ${fmtRp(perOrang)}/orang</span></div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-setor="${q.id}">+ Catat Setoran</button>
+    `;
+    list.appendChild(card);
+  });
+  $$('[data-setor]').forEach(b=>b.addEventListener("click", ()=>openSetoranModal(b.dataset.setor)));
+}
+
+function renderTutupBukuTab(el){
+  const periode = currentPeriode();
+  const closed = isPeriodeClosed(periode);
+  const canEdit = canEditKeuangan();
+  el.innerHTML = `
+    ${closed ? `<div class="lock-note">Periode <strong>${periode}</strong> sudah ditutup — data terkunci, hanya bisa dilihat.</div>` : ``}
+    <div class="table-scroll"><table>
+      <thead><tr><th>Periode</th><th>Ditutup Oleh</th><th>Tanggal Tutup</th><th>Status</th></tr></thead>
+      <tbody>
+        ${tutupBukuList.length===0 ? `<tr><td colspan="4" style="text-align:center; color:#8A9895;">Belum ada periode yang ditutup</td></tr>` : tutupBukuList.sort((a,b)=>b.id.localeCompare(a.id)).map(t=>`
+          <tr><td>${t.id}</td><td>${t.closedByName||"-"}</td><td>${t.closedAtDisplay||"-"}</td><td><span class="pill pill-ok">Ditutup</span></td></tr>
+        `).join("")}
+      </tbody>
+    </table></div>
+    ${canEdit && !closed ? `<button class="btn btn-primary" style="margin-top:14px;" id="btn-tutup-buku">Tutup Buku Periode ${periode}</button>` : ``}
+  `;
+  $("#btn-tutup-buku")?.addEventListener("click", async ()=>{
+    if(!confirm(`Tutup buku periode ${periode}? Data periode ini tidak bisa diedit lagi setelah ditutup.`)) return;
+    try{
+      await setDoc(doc(db,"tutup_buku",periode), {
+        closedBy: currentUser.uid, closedByName: currentUserDoc.nama||currentUserDoc.displayName,
+        closedAtDisplay: new Date().toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}),
+        closedAt: serverTimestamp()
+      });
+      toast("Buku periode "+periode+" berhasil ditutup.");
+    }catch(e){ console.error(e); toast("Gagal menutup buku.", true); }
+  });
+}
+
+function openTransaksiModal(){
+  openModal(`
+    <h3>Catat Transaksi</h3>
+    <div class="field"><label>Jenis Kategori</label>
+      <select id="tr-kategori">
+        <option value="infaq">Infaq / Donasi (Pemasukan)</option>
+        <option value="zakat">Zakat (Pemasukan)</option>
+        <option value="pengeluaran">Pengeluaran</option>
+      </select>
+    </div>
+    <div class="field" id="tr-nama-field"><label>Nama Pemberi (opsional, bisa "Hamba Allah")</label><input type="text" id="tr-nama" placeholder="Hamba Allah"></div>
+    <div class="field"><label>Jumlah (Rp)</label><input type="number" id="tr-jumlah" placeholder="0" min="0"></div>
+    <div class="field"><label>Tanggal</label><input type="date" id="tr-tanggal" value="${new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Keterangan (opsional)</label><textarea id="tr-keterangan" rows="2"></textarea></div>
+    <p class="form-error" id="tr-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="window.__closeModal()">Batal</button>
+      <button class="btn btn-primary" id="btn-save-transaksi">Simpan</button>
+    </div>
+  `);
+  const kategoriSel = $("#tr-kategori");
+  function syncNamaReq(){
+    if(kategoriSel.value === "zakat"){ $("#tr-nama-field label").textContent = "Nama Pemberi Zakat (wajib)"; }
+    else if(kategoriSel.value === "infaq"){ $("#tr-nama-field label").textContent = 'Nama Pemberi (opsional, bisa "Hamba Allah")'; $("#tr-nama-field").hidden=false; }
+    else { $("#tr-nama-field").hidden = true; }
+  }
+  kategoriSel.addEventListener("change", syncNamaReq); syncNamaReq();
+
+  $("#btn-save-transaksi").addEventListener("click", async ()=>{
+    const errEl = $("#tr-error"); errEl.style.display="none";
+    const kategori = kategoriSel.value;
+    const jumlah = Number($("#tr-jumlah").value);
+    const tanggal = $("#tr-tanggal").value;
+    const nama = $("#tr-nama").value.trim();
+    if(!jumlah || jumlah<=0){ errEl.textContent="Isi jumlah yang valid."; errEl.style.display="block"; return; }
+    if(!tanggal){ errEl.textContent="Isi tanggal."; errEl.style.display="block"; return; }
+    if(isPeriodeClosed(tanggal.slice(0,7))){ errEl.textContent="Periode ini sudah ditutup buku, tidak bisa tambah transaksi."; errEl.style.display="block"; return; }
+    if(kategori === "zakat" && !nama){ errEl.textContent="Nama pemberi zakat wajib diisi."; errEl.style.display="block"; return; }
+    try{
+      await addDoc(collection(db,"keuangan"), {
+        jenis: kategori==="pengeluaran" ? "keluar" : "masuk",
+        kategori, nama: kategori==="infaq" ? (nama||"Hamba Allah") : nama,
+        jumlah, tanggal, keterangan: $("#tr-keterangan").value.trim(),
+        createdBy: currentUser.uid, createdAt: serverTimestamp()
+      });
+      closeModal(); toast("Transaksi tersimpan.");
+    }catch(e){ console.error(e); errEl.textContent="Gagal menyimpan transaksi."; errEl.style.display="block"; }
+  });
+}
+
+function openQurbanUnitModal(){
+  openModal(`
+    <h3>Tambah Unit Hewan Qurban</h3>
+    <div class="field"><label>Nama Unit</label><input type="text" id="qu-nama" placeholder="Sapi #1"></div>
+    <div class="field"><label>Harga Total (Rp)</label><input type="number" id="qu-target" placeholder="20000000" min="0"></div>
+    <div class="field"><label>Jumlah Peserta</label><input type="number" id="qu-peserta" placeholder="7" min="1"></div>
+    <p class="form-error" id="qu-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="window.__closeModal()">Batal</button>
+      <button class="btn btn-primary" id="btn-save-qurban-unit">Simpan</button>
+    </div>
+  `);
+  $("#btn-save-qurban-unit").addEventListener("click", async ()=>{
+    const errEl = $("#qu-error"); errEl.style.display="none";
+    const nama = $("#qu-nama").value.trim();
+    const target = Number($("#qu-target").value);
+    const peserta = Number($("#qu-peserta").value);
+    if(!nama || !target || !peserta){ errEl.textContent="Lengkapi semua field."; errEl.style.display="block"; return; }
+    try{
+      await addDoc(collection(db,"qurban_unit"), { nama, target, peserta, terkumpul:0, createdAt: serverTimestamp() });
+      closeModal(); toast("Unit hewan qurban ditambahkan.");
+    }catch(e){ console.error(e); errEl.textContent="Gagal menyimpan."; errEl.style.display="block"; }
+  });
+}
+
+let qurbanBuktiUrl = "";
+function openSetoranModal(unitId){
+  qurbanBuktiUrl = "";
+  const unit = qurbanUnits.find(u=>u.id===unitId);
+  openModal(`
+    <h3>Catat Setoran — ${unit?.nama||""}</h3>
+    <div class="field"><label>Nama Peserta</label><input type="text" id="st-nama" placeholder="Nama lengkap"></div>
+    <div class="field"><label>Jumlah Setoran (Rp)</label><input type="number" id="st-jumlah" placeholder="0" min="0"></div>
+    <div class="field"><label>Metode</label>
+      <div class="radio-row">
+        <label><input type="radio" name="st-metode" value="cash" checked> Cash</label>
+        <label><input type="radio" name="st-metode" value="transfer"> Transfer</label>
+      </div>
+    </div>
+    <div class="field"><label>Bukti (foto tanda terima / bukti transfer)</label>
+      <input type="file" id="st-bukti-input" accept="image/*">
+      <div style="font-size:11.5px; color:#8A9895; margin-top:5px;" id="st-bukti-status">Belum ada file</div>
+    </div>
+    <p class="form-error" id="st-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="window.__closeModal()">Batal</button>
+      <button class="btn btn-primary" id="btn-save-setoran">Simpan</button>
+    </div>
+  `);
+  $("#st-bukti-input").addEventListener("change", async (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    $("#st-bukti-status").textContent = "Mengunggah…";
+    try{
+      const fd = new FormData(); fd.append("file",file); fd.append("upload_preset",CLOUDINARY_UPLOAD_PRESET);
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {method:"POST", body:fd});
+      const data = await res.json();
+      if(data.secure_url){ qurbanBuktiUrl = data.secure_url; $("#st-bukti-status").textContent = "Terunggah ✓"; }
+      else throw new Error();
+    }catch(e){ $("#st-bukti-status").textContent = "Gagal unggah, coba lagi"; }
+  });
+  $("#btn-save-setoran").addEventListener("click", async ()=>{
+    const errEl = $("#st-error"); errEl.style.display="none";
+    const nama = $("#st-nama").value.trim();
+    const jumlah = Number($("#st-jumlah").value);
+    const metode = document.querySelector('input[name="st-metode"]:checked').value;
+    if(!nama || !jumlah){ errEl.textContent="Isi nama dan jumlah setoran."; errEl.style.display="block"; return; }
+    if(!qurbanBuktiUrl){ errEl.textContent="Unggah bukti setoran terlebih dahulu."; errEl.style.display="block"; return; }
+    try{
+      await addDoc(collection(db,"qurban_setoran"), {
+        unitId, pesertaNama:nama, jumlah, metode, buktiUrl:qurbanBuktiUrl,
+        tanggal: new Date().toISOString().slice(0,10), createdBy: currentUser.uid, createdAt: serverTimestamp()
+      });
+      await updateDoc(doc(db,"qurban_unit",unitId), { terkumpul: (unit?.terkumpul||0) + jumlah });
+      closeModal(); toast("Setoran tersimpan.");
+    }catch(e){ console.error(e); errEl.textContent="Gagal menyimpan setoran."; errEl.style.display="block"; }
+  });
+}
+window.__closeModal = closeModal;
 
 function viewDashboard(){
   return `
