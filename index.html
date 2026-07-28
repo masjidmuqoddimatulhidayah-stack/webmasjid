@@ -981,18 +981,25 @@ function viewDashboard(){
     <div class="placeholder-panel"><strong>Modul lain menyusul</strong>Keuangan, Kegiatan, Pengajuan, dan modul lainnya akan dibangun bertahap setelah Fondasi ini stabil.</div>
   `;
 }
+const KOTA_KEYWORD = "lubuklinggau"; // sesuaikan nanti lewat menu Pengaturan
+let kotaIdCache = null;
 async function loadJadwalSholat(){
   const grid = $("#dash-prayer-grid");
   if(!grid) return;
   try{
+    if(!kotaIdCache){
+      const cariRes = await fetch(`https://api.myquran.com/v2/sholat/kota/cari/${encodeURIComponent(KOTA_KEYWORD)}`);
+      const cariJson = await cariRes.json();
+      if(!cariJson.status || !cariJson.data || !cariJson.data.length) throw new Error("kota tidak ditemukan");
+      kotaIdCache = cariJson.data[0].id;
+    }
     const today = new Date();
     const dd = String(today.getDate()).padStart(2,"0");
     const mm = String(today.getMonth()+1).padStart(2,"0");
     const yyyy = today.getFullYear();
-    // Kota default: Palembang (kode 1001 area contoh) — nanti disesuaikan lewat menu Pengaturan
-    const res = await fetch(`https://api.myquran.com/v2/sholat/jadwal/1109/${yyyy}/${mm}/${dd}`);
+    const res = await fetch(`https://api.myquran.com/v2/sholat/jadwal/${kotaIdCache}/${yyyy}/${mm}/${dd}`);
     const json = await res.json();
-    if(!json.status) throw new Error("gagal");
+    if(!json.status) throw new Error("gagal ambil jadwal");
     const j = json.data.jadwal;
     const order = [["Subuh", j.subuh],["Dzuhur", j.dzuhur],["Ashar", j.ashar],["Maghrib", j.maghrib],["Isya", j.isya]];
     grid.innerHTML = order.map(([label,time])=>`<div class="prayer-cell"><div class="pname">${label}</div><div class="ptime">${time}</div></div>`).join("");
