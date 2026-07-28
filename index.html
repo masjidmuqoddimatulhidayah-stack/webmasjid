@@ -675,7 +675,7 @@ function placeholderModule(name){
 
 async function renderView(){
   const main = $("#main-content");
-  if(currentView === "dashboard"){ main.innerHTML = viewDashboard(); loadJadwalSholat(); return; }
+  if(currentView === "dashboard"){ main.innerHTML = viewDashboard(); loadJadwalSholat("#dash-prayer-grid","#dash-jadwal-meta"); loadDashboardData(); return; }
   if(currentView === "user"){ main.innerHTML = "<div class='topbar'><div><p class='eyebrow'>Administrasi Sistem</p><h1>Kelola User</h1></div></div><div id='user-panel'></div>"; renderUserManagement(); return; }
   if(currentView === "keuangan"){ initKeuanganView(); return; }
   if(currentView === "jamaah"){ initJamaahView(); return; }
@@ -684,6 +684,7 @@ async function renderView(){
   if(currentView === "pengajuan"){ initPengajuanView(); return; }
   if(currentView === "surat"){ initSuratView(); return; }
   if(currentView === "aset"){ initAsetView(); return; }
+  if(currentView === "jadwal"){ initJadwalView(); return; }
   main.innerHTML = placeholderModule(ALL_MENUS.find(m=>m.id===currentView)?.label || currentView);
 }
 
@@ -1198,16 +1199,55 @@ function openPengumumanModal(id){
 function viewDashboard(){
   return `
     <div class="topbar"><div><p class="eyebrow">Ringkasan</p><h1>Assalamu'alaikum, ${(currentUserDoc.nama||currentUserDoc.displayName||"").split(" ")[0]}</h1><p class="desc">Masjid Muqoddimatul Hidayah</p></div></div>
+    <div class="stat-grid" id="dash-stats">
+      <div class="stat-card"><div class="label">Saldo Kas</div><div class="value" id="dash-saldo">Memuat…</div></div>
+      <div class="stat-card"><div class="label">Jamaah Terdata</div><div class="value" id="dash-jamaah">Memuat…</div></div>
+      <div class="stat-card"><div class="label">Kegiatan Mendatang</div><div class="value" id="dash-kegiatan-count">Memuat…</div></div>
+    </div>
     <div class="panel"><div class="panel-head"><h3>Jadwal Sholat Hari Ini</h3></div>
       <div class="prayer-grid" id="dash-prayer-grid"><div class="empty-state" style="grid-column:1/-1;">Memuat jadwal…</div></div>
+      <p style="font-size:11.5px; color:#8A9895; margin-top:10px;" id="dash-jadwal-meta"></p>
     </div>
-    <div class="placeholder-panel"><strong>Modul lain menyusul</strong>Keuangan, Kegiatan, Pengajuan, dan modul lainnya akan dibangun bertahap setelah Fondasi ini stabil.</div>
+    <div class="panel"><div class="panel-head"><h3>Kegiatan Mendatang</h3></div><div id="dash-kegiatan-list"><div class="empty-state"><p>Memuat…</p></div></div></div>
+    <div class="panel"><div class="panel-head"><h3>Pengumuman Terbaru</h3></div><div id="dash-pengumuman-list"><div class="empty-state"><p>Memuat…</p></div></div></div>
   `;
+}
+let dashUnsubs = [];
+function loadDashboardData(){
+  dashUnsubs.forEach(u=>u());
+  dashUnsubs = [];
+  dashUnsubs.push(onSnapshot(collection(db,"keuangan"), (snap)=>{
+    let masuk=0, keluar=0;
+    snap.docs.forEach(d=>{ const t=d.data(); if(t.jenis==="masuk") masuk+=Number(t.jumlah||0); else keluar+=Number(t.jumlah||0); });
+    const el = $("#dash-saldo"); if(el) el.textContent = fmtRp(masuk-keluar);
+  }, ()=>{ const el=$("#dash-saldo"); if(el) el.textContent="—"; }));
+  dashUnsubs.push(onSnapshot(collection(db,"jamaah"), (snap)=>{
+    const el = $("#dash-jamaah"); if(el) el.textContent = snap.size;
+  }, ()=>{ const el=$("#dash-jamaah"); if(el) el.textContent="—"; }));
+  dashUnsubs.push(onSnapshot(query(collection(db,"kegiatan"), orderBy("tanggal","asc")), (snap)=>{
+    const today = new Date().toISOString().slice(0,10);
+    const upcoming = snap.docs.map(d=>({id:d.id,...d.data()})).filter(k=>k.tanggal>=today).slice(0,4);
+    const countEl = $("#dash-kegiatan-count"); if(countEl) countEl.textContent = upcoming.length;
+    const listEl = $("#dash-kegiatan-list");
+    if(listEl){
+      listEl.innerHTML = upcoming.length===0 ? emptyState("Belum ada kegiatan mendatang","Tambahkan agenda di menu Kegiatan.")
+        : upcoming.map(k=>`<div class="announcement"><div class="a-date">${fmtTanggalID(k.tanggal)}${k.waktu?" · "+k.waktu:""}</div><div class="a-title">${k.nama}</div><div class="a-body">📍 ${k.lokasi||"-"}</div></div>`).join("");
+    }
+  }, ()=>{ const el=$("#dash-kegiatan-list"); if(el) el.innerHTML = emptyState("Gagal memuat","Cek koneksi atau Firestore Rules."); }));
+  dashUnsubs.push(onSnapshot(query(collection(db,"pengumuman"), orderBy("tanggal","desc")), (snap)=>{
+    const items = snap.docs.map(d=>({id:d.id,...d.data()})).slice(0,3);
+    const listEl = $("#dash-pengumuman-list");
+    if(listEl){
+      listEl.innerHTML = items.length===0 ? emptyState("Belum ada pengumuman","Buat pengumuman di menu Pengumuman.")
+        : items.map(p=>`<div class="announcement"><div class="a-date">${fmtTanggalID(p.tanggal)}</div><div class="a-title">${p.judul}</div><div class="a-body">${p.isi}</div></div>`).join("");
+    }
+  }, ()=>{ const el=$("#dash-pengumuman-list"); if(el) el.innerHTML = emptyState("Gagal memuat","Cek koneksi atau Firestore Rules."); }));
 }
 const KOTA_KEYWORD = "lubuklinggau"; // sesuaikan nanti lewat menu Pengaturan
 let kotaIdCache = null;
-async function loadJadwalSholat(){
-  const grid = $("#dash-prayer-grid");
+let kotaNamaCache = null;
+async function loadJadwalSholat(gridSelector, metaSelector){
+  const grid = $(gridSelector || "#dash-prayer-grid");
   if(!grid) return;
   try{
     if(!kotaIdCache){
@@ -1215,6 +1255,7 @@ async function loadJadwalSholat(){
       const cariJson = await cariRes.json();
       if(!cariJson.status || !cariJson.data || !cariJson.data.length) throw new Error("kota tidak ditemukan");
       kotaIdCache = cariJson.data[0].id;
+      kotaNamaCache = cariJson.data[0].lokasi;
     }
     const today = new Date();
     const dd = String(today.getDate()).padStart(2,"0");
@@ -1226,6 +1267,8 @@ async function loadJadwalSholat(){
     const j = json.data.jadwal;
     const order = [["Subuh", j.subuh],["Dzuhur", j.dzuhur],["Ashar", j.ashar],["Maghrib", j.maghrib],["Isya", j.isya]];
     grid.innerHTML = order.map(([label,time])=>`<div class="prayer-cell"><div class="pname">${label}</div><div class="ptime">${time}</div></div>`).join("");
+    const meta = document.querySelector(metaSelector || "#dash-jadwal-meta");
+    if(meta) meta.textContent = `Lokasi: ${kotaNamaCache || KOTA_KEYWORD} · Sumber: Kementerian Agama RI, via API MyQuran (api.myquran.com)`;
   }catch(e){
     console.error(e);
     grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><p>Jadwal sholat belum bisa dimuat. Cek koneksi atau coba lagi nanti.</p></div>`;
@@ -1236,12 +1279,19 @@ async function loadJadwalSholat(){
 function renderUserManagement(){
   const panel = $("#user-panel");
   const myRole = primaryRole();
-  onSnapshot(query(collection(db,"users"), where("status","==","pending")), (snap) => {
-    const pendingUsers = snap.docs.map(d=>({id:d.id, ...d.data()}));
+  onSnapshot(collection(db,"users"), (snap) => {
+    const allUsers = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    const pendingUsers = allUsers.filter(u=>u.status==="pending");
+    const activeUsers = allUsers.filter(u=>u.status==="approved");
     panel.innerHTML = `
       <div class="panel"><div class="panel-head"><h3>Menunggu Persetujuan (${pendingUsers.length})</h3></div>
         <div id="pending-list">${pendingUsers.length===0 ? emptyState("Tidak ada pendaftaran baru","Semua pendaftaran sudah ditinjau.") : ""}</div>
-      </div>`;
+      </div>
+      <div class="panel"><div class="panel-head"><h3>Pengguna Aktif (${activeUsers.length})</h3></div>
+        <div class="table-scroll"><table><thead><tr><th>Nama</th><th>Peran</th></tr></thead>
+        <tbody>${activeUsers.map(u=>`<tr><td>${u.nama||u.displayName||"-"}</td><td>${(u.roles||[]).map(r=>`<span class="badge-role-sm">${ROLE_LABEL[r]||r}</span>`).join("")}</td></tr>`).join("")}</tbody></table></div>
+      </div>
+    `;
     const list = $("#pending-list");
     pendingUsers.forEach(u => {
       const roles = u.roles || [];
@@ -1264,12 +1314,15 @@ function renderUserManagement(){
     });
     $$('#pending-list [data-act="approve"]').forEach(b=>b.addEventListener("click", async ()=>{
       try{ await updateDoc(doc(db,"users",b.dataset.id), {status:"approved"}); toast("Pendaftar disetujui."); }
-      catch(e){ console.error(e); toast("Gagal menyetujui.", true); }
+      catch(e){ console.error(e); toast("Gagal menyetujui: "+e.message, true); }
     }));
     $$('#pending-list [data-act="reject"]').forEach(b=>b.addEventListener("click", async ()=>{
       try{ await updateDoc(doc(db,"users",b.dataset.id), {status:"rejected"}); toast("Pendaftar ditolak."); }
-      catch(e){ console.error(e); toast("Gagal menolak.", true); }
+      catch(e){ console.error(e); toast("Gagal menolak: "+e.message, true); }
     }));
+  }, (err)=>{
+    console.error(err);
+    panel.innerHTML = `<div class="panel"><div class="empty-state"><p>Gagal memuat data pengguna: ${err.message}. Cek Firestore Rules sudah di-publish.</p></div></div>`;
   });
 }
 
@@ -1510,12 +1563,16 @@ function renderAsetList(){
   if(!el) return;
   if(asetList.length===0){ el.innerHTML = emptyState("Belum ada aset","Tambahkan data aset masjid pertama."); return; }
   el.innerHTML = `<div class="table-scroll"><table>
-    <thead><tr><th>Nama Barang</th><th>Kondisi</th><th>Lokasi</th>${canEditAset()?'<th></th>':''}</tr></thead>
+    <thead><tr><th>No. Aset</th><th>Nama Barang</th><th>Kondisi</th><th>Lokasi</th><th></th></tr></thead>
     <tbody>${asetList.map(a=>`<tr>
+      <td class="mono">${a.nomorAset||"-"}</td>
       <td>${a.nama}</td>
       <td><span class="pill ${a.kondisi==='Baik'?'pill-ok':(a.kondisi==='Rusak'?'pill-no':'pill-wait')}">${a.kondisi}</span></td>
       <td>${a.lokasi||"-"}</td>
-      ${canEditAset()?`<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-edit-aset="${a.id}">Edit</button> <button class="btn btn-danger btn-sm" data-del-aset="${a.id}">Hapus</button></td>`:''}
+      <td style="white-space:nowrap;">
+        <button class="btn btn-ghost btn-sm" data-print-aset="${a.id}">Cetak Label</button>
+        ${canEditAset()?`<button class="btn btn-ghost btn-sm" data-edit-aset="${a.id}">Edit</button> <button class="btn btn-danger btn-sm" data-del-aset="${a.id}">Hapus</button>`:''}
+      </td>
     </tr>`).join("")}</tbody>
   </table></div>`;
   $$('[data-edit-aset]').forEach(b=>b.addEventListener("click", ()=>openAsetModal(asetList.find(x=>x.id===b.dataset.editAset))));
@@ -1524,10 +1581,36 @@ function renderAsetList(){
     try{ await deleteDoc(doc(db,"aset",b.dataset.delAset)); toast("Aset dihapus."); }
     catch(e){ console.error(e); toast("Gagal menghapus.", true); }
   }));
+  $$('[data-print-aset]').forEach(b=>b.addEventListener("click", ()=>printAsetLabel(asetList.find(x=>x.id===b.dataset.printAset))));
+}
+function printAsetLabel(a){
+  if(!a) return;
+  const w = window.open("", "_blank", "width=420,height=300");
+  w.document.write(`
+    <html><head><title>Label Aset — ${a.nama}</title>
+    <style>
+      body{font-family:'Plus Jakarta Sans',Arial,sans-serif; padding:24px; text-align:center;}
+      .label{border:2px solid #0F4C46; border-radius:10px; padding:20px; max-width:320px; margin:0 auto;}
+      .masjid{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:#C9A227; font-weight:700;}
+      h2{font-size:16px; color:#0A2E2A; margin:6px 0;}
+      .nomor{font-family:monospace; font-size:20px; font-weight:700; color:#0F4C46; margin:10px 0;}
+      .lokasi{font-size:11px; color:#5C6D6A;}
+    </style></head>
+    <body onload="window.print()">
+      <div class="label">
+        <div class="masjid">Masjid Muqoddimatul Hidayah</div>
+        <h2>${a.nama}</h2>
+        <div class="nomor">${a.nomorAset || "—"}</div>
+        <div class="lokasi">Lokasi: ${a.lokasi||"-"} · Kondisi: ${a.kondisi}</div>
+      </div>
+    </body></html>
+  `);
+  w.document.close();
 }
 function openAsetModal(existing){
   openModal(`
     <h3>${existing?"Edit":"Tambah"} Aset</h3>
+    <div class="field"><label>Nomor Aset</label><input type="text" id="as-nomor" value="${existing?.nomorAset||""}" placeholder="Contoh: AST-001"></div>
     <div class="field"><label>Nama Barang</label><input type="text" id="as-nama" value="${existing?.nama||""}" placeholder="Sound System Utama"></div>
     <div class="field"><label>Kondisi</label>
       <select id="as-kondisi">
@@ -1545,11 +1628,83 @@ function openAsetModal(existing){
     const errEl = $("#as-error"); errEl.style.display="none";
     const nama = $("#as-nama").value.trim();
     if(!nama){ errEl.textContent="Nama barang wajib diisi."; errEl.style.display="block"; return; }
-    const data = { nama, kondisi:$("#as-kondisi").value, lokasi:$("#as-lokasi").value.trim(), catatan:$("#as-catatan").value.trim() };
+    const data = { nomorAset:$("#as-nomor").value.trim(), nama, kondisi:$("#as-kondisi").value, lokasi:$("#as-lokasi").value.trim(), catatan:$("#as-catatan").value.trim() };
     try{
       if(existing) await updateDoc(doc(db,"aset",existing.id), data);
       else await addDoc(collection(db,"aset"), {...data, createdAt:serverTimestamp(), createdBy:currentUser.uid});
       closeModal(); toast("Aset tersimpan.");
+    }catch(e){ console.error(e); errEl.textContent="Gagal menyimpan."; errEl.style.display="block"; }
+  });
+}
+
+/* ================= JADWAL SHOLAT & KHATIB MODULE ================= */
+let khatibList = [];
+let khatibUnsub = null;
+function canEditKhatib(){
+  const r = currentUserDoc.roles||[];
+  return r.includes("godmode")||r.includes("admin")||r.includes("sekretaris")||r.includes("ketua");
+}
+function initJadwalView(){
+  const main = $("#main-content");
+  main.innerHTML = `
+    <div class="topbar"><div><p class="eyebrow">Waktu Sholat</p><h1>Jadwal Sholat &amp; Khatib</h1><p class="desc">Jadwal sholat otomatis, jadwal khatib Jumat dikelola manual</p></div></div>
+    <div class="panel"><div class="panel-head"><h3>Jadwal Sholat Hari Ini</h3></div>
+      <div class="prayer-grid" id="jadwal-prayer-grid"><div class="empty-state" style="grid-column:1/-1;">Memuat jadwal…</div></div>
+      <p style="font-size:11.5px; color:#8A9895; margin-top:10px;" id="jadwal-meta"></p>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Jadwal Khatib Jumat</h3>${canEditKhatib()?`<button class="btn btn-gold btn-sm" id="btn-add-khatib">+ Tambah</button>`:``}</div>
+      <div id="khatib-list"><div class="empty-state"><p>Memuat…</p></div></div>
+    </div>
+  `;
+  loadJadwalSholat("#jadwal-prayer-grid","#jadwal-meta");
+  $("#btn-add-khatib")?.addEventListener("click", ()=>openKhatibModal());
+  if(khatibUnsub) khatibUnsub();
+  khatibUnsub = onSnapshot(query(collection(db,"khatib_jumat"), orderBy("tanggal","asc")), (snap)=>{
+    khatibList = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderKhatibList();
+  });
+}
+function renderKhatibList(){
+  const el = $("#khatib-list");
+  if(!el) return;
+  const today = new Date().toISOString().slice(0,10);
+  const upcoming = khatibList.filter(k=>k.tanggal>=today);
+  if(upcoming.length===0){ el.innerHTML = emptyState("Belum ada jadwal khatib","Tambahkan jadwal khatib Jumat berikutnya."); return; }
+  el.innerHTML = `<div class="table-scroll"><table>
+    <thead><tr><th>Tanggal</th><th>Khatib</th><th>Imam</th>${canEditKhatib()?'<th></th>':''}</tr></thead>
+    <tbody>${upcoming.map(k=>`<tr>
+      <td>${fmtTanggalID(k.tanggal)}</td><td>${k.khatib||"-"}</td><td>${k.imam||"-"}</td>
+      ${canEditKhatib()?`<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-edit-kh="${k.id}">Edit</button> <button class="btn btn-danger btn-sm" data-del-kh="${k.id}">Hapus</button></td>`:''}
+    </tr>`).join("")}</tbody>
+  </table></div>`;
+  $$('[data-edit-kh]').forEach(b=>b.addEventListener("click", ()=>openKhatibModal(khatibList.find(x=>x.id===b.dataset.editKh))));
+  $$('[data-del-kh]').forEach(b=>b.addEventListener("click", async ()=>{
+    if(!confirm("Hapus jadwal ini?")) return;
+    try{ await deleteDoc(doc(db,"khatib_jumat",b.dataset.delKh)); toast("Jadwal dihapus."); }
+    catch(e){ console.error(e); toast("Gagal menghapus.", true); }
+  }));
+}
+function openKhatibModal(existing){
+  openModal(`
+    <h3>${existing?"Edit":"Tambah"} Jadwal Khatib</h3>
+    <div class="field"><label>Tanggal Jumat</label><input type="date" id="kh-tanggal" value="${existing?.tanggal||""}"></div>
+    <div class="field"><label>Nama Khatib</label><input type="text" id="kh-khatib" value="${existing?.khatib||""}" placeholder="Ust. Contoh"></div>
+    <div class="field"><label>Imam Sholat</label><input type="text" id="kh-imam" value="${existing?.imam||""}" placeholder="Opsional"></div>
+    <div class="field"><label>Tema Khutbah (opsional)</label><input type="text" id="kh-tema" value="${existing?.tema||""}"></div>
+    <p class="form-error" id="kh-error"></p>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="window.__closeModal()">Batal</button><button class="btn btn-primary" id="btn-save-khatib">Simpan</button></div>
+  `);
+  $("#btn-save-khatib").addEventListener("click", async ()=>{
+    const errEl = $("#kh-error"); errEl.style.display="none";
+    const tanggal = $("#kh-tanggal").value;
+    const khatib = $("#kh-khatib").value.trim();
+    if(!tanggal || !khatib){ errEl.textContent="Tanggal dan nama khatib wajib diisi."; errEl.style.display="block"; return; }
+    const data = { tanggal, khatib, imam:$("#kh-imam").value.trim(), tema:$("#kh-tema").value.trim() };
+    try{
+      if(existing) await updateDoc(doc(db,"khatib_jumat",existing.id), data);
+      else await addDoc(collection(db,"khatib_jumat"), {...data, createdAt:serverTimestamp(), createdBy:currentUser.uid});
+      closeModal(); toast("Jadwal khatib tersimpan.");
     }catch(e){ console.error(e); errEl.textContent="Gagal menyimpan."; errEl.style.display="block"; }
   });
 }
