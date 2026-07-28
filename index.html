@@ -414,7 +414,7 @@ const ROLE_DEFS = [
   {id:"admin", label:"Admin", desc:"Kelola akun & sistem — perlu verifikasi God Mode"},
 ];
 const ROLE_LABEL = Object.fromEntries(ROLE_DEFS.map(r=>[r.id,r.label]));
-ROLE_LABEL.godmode = "God Mode";
+ROLE_LABEL.godmode = "Administrator";
 
 const ALL_MENUS = [
   {id:"dashboard", label:"Dashboard"},
@@ -685,6 +685,7 @@ async function renderView(){
   if(currentView === "surat"){ initSuratView(); return; }
   if(currentView === "aset"){ initAsetView(); return; }
   if(currentView === "jadwal"){ initJadwalView(); return; }
+  if(currentView === "statistik"){ initStatistikView(); return; }
   main.innerHTML = placeholderModule(ALL_MENUS.find(m=>m.id===currentView)?.label || currentView);
 }
 
@@ -1243,7 +1244,7 @@ function loadDashboardData(){
     }
   }, ()=>{ const el=$("#dash-pengumuman-list"); if(el) el.innerHTML = emptyState("Gagal memuat","Cek koneksi atau Firestore Rules."); }));
 }
-const KOTA_KEYWORD = "lubuklinggau"; // sesuaikan nanti lewat menu Pengaturan
+const KOTA_KEYWORD = "palembang"; // sesuaikan nanti lewat menu Pengaturan
 let kotaIdCache = null;
 let kotaNamaCache = null;
 async function loadJadwalSholat(gridSelector, metaSelector){
@@ -1707,6 +1708,61 @@ function openKhatibModal(existing){
       closeModal(); toast("Jadwal khatib tersimpan.");
     }catch(e){ console.error(e); errEl.textContent="Gagal menyimpan."; errEl.style.display="block"; }
   });
+}
+
+/* ================= STATISTIK MODULE ================= */
+let statUnsubs = [];
+function initStatistikView(){
+  const main = $("#main-content");
+  main.innerHTML = `
+    <div class="topbar"><div><p class="eyebrow">Analitik</p><h1>Statistik</h1><p class="desc">Tren infaq &amp; perkembangan jamaah</p></div></div>
+    <div class="panel">
+      <div class="panel-head"><h3>Tren Pemasukan 6 Bulan Terakhir</h3></div>
+      <div id="stat-chart" style="display:flex; align-items:flex-end; gap:10px; height:140px; padding-top:10px;"><div class="empty-state"><p>Memuat…</p></div></div>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="label">Jamaah Aktif</div><div class="value" id="stat-jamaah-count">Memuat…</div></div>
+      <div class="stat-card"><div class="label">Rata-rata Pemasukan/Bulan</div><div class="value" id="stat-avg-masuk">Memuat…</div></div>
+      <div class="stat-card"><div class="label">Total Pemasukan (semua waktu)</div><div class="value" id="stat-total-masuk">Memuat…</div></div>
+      <div class="stat-card"><div class="label">Total Pengeluaran (semua waktu)</div><div class="value" id="stat-total-keluar">Memuat…</div></div>
+    </div>
+  `;
+  statUnsubs.forEach(u=>u()); statUnsubs=[];
+  statUnsubs.push(onSnapshot(collection(db,"jamaah"), (snap)=>{
+    const el = $("#stat-jamaah-count"); if(el) el.textContent = snap.size;
+  }));
+  statUnsubs.push(onSnapshot(collection(db,"keuangan"), (snap)=>{
+    const tx = snap.docs.map(d=>d.data());
+    let totalMasuk=0, totalKeluar=0;
+    const byMonth = {};
+    const now = new Date();
+    const months = [];
+    for(let i=5;i>=0;i--){
+      const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+      months.push({key, label:d.toLocaleDateString("id-ID",{month:"short"})});
+      byMonth[key] = 0;
+    }
+    tx.forEach(t=>{
+      const jml = Number(t.jumlah||0);
+      if(t.jenis==="masuk"){ totalMasuk+=jml; const key=(t.tanggal||"").slice(0,7); if(key in byMonth) byMonth[key]+=jml; }
+      else totalKeluar+=jml;
+    });
+    const maxVal = Math.max(1, ...months.map(m=>byMonth[m.key]));
+    const chartEl = $("#stat-chart");
+    if(chartEl){
+      chartEl.innerHTML = months.map(m=>`
+        <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; height:100%; justify-content:flex-end;">
+          <div style="font-size:10px; color:#5C6D6A; font-weight:700;">${byMonth[m.key]>0?fmtRp(byMonth[m.key]).replace('Rp ','').slice(0,6):''}</div>
+          <div style="width:100%; background:var(--teal-900); border-radius:6px 6px 0 0; height:${Math.max(4, byMonth[m.key]/maxVal*95)}px;"></div>
+          <span style="font-size:10.5px; color:#8A9895; font-weight:700;">${m.label}</span>
+        </div>`).join("");
+    }
+    const avg = totalMasuk / 6;
+    const elAvg = $("#stat-avg-masuk"); if(elAvg) elAvg.textContent = fmtRp(Math.round(avg));
+    const elTM = $("#stat-total-masuk"); if(elTM) elTM.textContent = fmtRp(totalMasuk);
+    const elTK = $("#stat-total-keluar"); if(elTK) elTK.textContent = fmtRp(totalKeluar);
+  }, ()=>{ const el=$("#stat-chart"); if(el) el.innerHTML = emptyState("Gagal memuat","Cek Firestore Rules."); }));
 }
 
 /* ============ MOBILE / DESKTOP TOGGLE ============ */
