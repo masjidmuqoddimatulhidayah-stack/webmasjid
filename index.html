@@ -681,6 +681,9 @@ async function renderView(){
   if(currentView === "jamaah"){ initJamaahView(); return; }
   if(currentView === "kegiatan"){ initKegiatanView(); return; }
   if(currentView === "pengumuman"){ initPengumumanView(); return; }
+  if(currentView === "pengajuan"){ initPengajuanView(); return; }
+  if(currentView === "surat"){ initSuratView(); return; }
+  if(currentView === "aset"){ initAsetView(); return; }
   main.innerHTML = placeholderModule(ALL_MENUS.find(m=>m.id===currentView)?.label || currentView);
 }
 
@@ -1267,6 +1270,287 @@ function renderUserManagement(){
       try{ await updateDoc(doc(db,"users",b.dataset.id), {status:"rejected"}); toast("Pendaftar ditolak."); }
       catch(e){ console.error(e); toast("Gagal menolak.", true); }
     }));
+  });
+}
+
+/* ================= PENGAJUAN MODULE ================= */
+const APPROVER_ROLE_OPTS = [
+  {id:"sekretaris", label:"Sekretaris"},
+  {id:"bendahara", label:"Bendahara"},
+  {id:"ketua", label:"Ketua DKM"},
+  {id:"admin", label:"Admin"},
+  {id:"godmode", label:"God Mode"},
+];
+let pengajuanList = [];
+let pengajuanUnsub = null;
+function initPengajuanView(){
+  const main = $("#main-content");
+  main.innerHTML = `
+    <div class="topbar">
+      <div><p class="eyebrow">Approval</p><h1>Pengajuan</h1><p class="desc">Alur persetujuan disesuaikan manual tiap pengajuan</p></div>
+      <button class="btn btn-gold" id="btn-add-pengajuan">+ Ajukan Baru</button>
+    </div>
+    <div id="pengajuan-list"><div class="empty-state"><p>Memuat…</p></div></div>
+  `;
+  $("#btn-add-pengajuan").addEventListener("click", ()=>openPengajuanFormModal());
+  if(pengajuanUnsub) pengajuanUnsub();
+  pengajuanUnsub = onSnapshot(query(collection(db,"pengajuan"), orderBy("createdAtSort","desc")), (snap)=>{
+    pengajuanList = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderPengajuanList();
+  });
+}
+function renderPengajuanList(){
+  const el = $("#pengajuan-list");
+  if(!el) return;
+  if(pengajuanList.length===0){ el.innerHTML = emptyState("Belum ada pengajuan","Buat pengajuan pertama."); return; }
+  const myRoles = currentUserDoc.roles||[];
+  el.innerHTML = pengajuanList.map(p=>{
+    const steps = p.approverRoles||[];
+    const statusPill = p.status==="disetujui" ? '<span class="pill pill-ok">Disetujui</span>'
+      : p.status==="ditolak" ? '<span class="pill pill-no">Ditolak, perlu revisi</span>'
+      : `<span class="pill pill-wait">Menunggu ${ROLE_LABEL[steps[p.currentStep]]||''}</span>`;
+    const canAct = p.status==="proses" && steps[p.currentStep] && (myRoles.includes(steps[p.currentStep]) || myRoles.includes("godmode"));
+    const canRevise = p.status==="ditolak" && (p.pemohonUid===currentUser.uid || myRoles.includes("godmode"));
+    const track = (p.history||[]).map(h=>`
+      <div class="ap-step">
+        <div class="ap-dot ${h.action==='approve'?'done':(h.action==='reject'?'':'wait')}" style="${h.action==='reject'?'background:#F7E9E5;color:var(--red-600);':''}">${h.action==='approve'?'✓':(h.action==='reject'?'✕':'•')}</div>
+        <div class="ap-text"><strong>${h.action==='approve'?'Disetujui':(h.action==='reject'?'Ditolak':'Diajukan')} ${h.byName?('— '+h.byName):''}</strong>${h.note||''}</div>
+      </div>`).join("");
+    const pendingStep = p.status==="proses" ? `<div class="ap-step"><div class="ap-dot wait">…</div><div class="ap-text"><strong>Menunggu ${ROLE_LABEL[steps[p.currentStep]]||'—'}</strong>Persetujuan berikutnya</div></div>` : "";
+    return `<div class="panel">
+      <div class="panel-head"><h3>${p.judul}</h3>${statusPill}</div>
+      <p style="font-size:12.5px; color:#5C6D6A; margin-bottom:12px;">Diajukan oleh <strong>${p.pemohonNama}</strong>${p.jumlah?" · "+fmtRp(p.jumlah):""} · ${p.deskripsi||""}</p>
+      <div class="approval-track">${track}${pendingStep}</div>
+      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+        ${canAct ? `<button class="btn btn-primary btn-sm" data-approve="${p.id}">Setujui</button><button class="btn btn-danger btn-sm" data-reject="${p.id}">Tolak</button>` : ``}
+        ${canRevise ? `<button class="btn btn-ghost btn-sm" data-revise="${p.id}">Revisi &amp; Ajukan Ulang</button>` : ``}
+      </div>
+    </div>`;
+  }).join("");
+  $$('[data-approve]').forEach(b=>b.addEventListener("click", ()=>actPengajuan(b.dataset.approve,"approve")));
+  $$('[data-reject]').forEach(b=>b.addEventListener("click", ()=>actPengajuan(b.dataset.reject,"reject")));
+  $$('[data-revise]').forEach(b=>b.addEventListener("click", ()=>openPengajuanFormModal(pengajuanList.find(x=>x.id===b.dataset.revise))));
+}
+async function actPengajuan(id, action){
+  const p = pengajuanList.find(x=>x.id===id);
+  if(!p) return;
+  const note = action==="reject" ? (prompt("Alasan penolakan (opsional):")||"") : "";
+  const historyEntry = { action, by: currentUser.uid, byName: currentUserDoc.nama||currentUserDoc.displayName, note, at: new Date().toISOString() };
+  try{
+    if(action==="approve"){
+      const nextStep = p.currentStep + 1;
+      const done = nextStep >= (p.approverRoles||[]).length;
+      await updateDoc(doc(db,"pengajuan",id), {
+        history: [...(p.history||[]), historyEntry],
+        currentStep: nextStep,
+        status: done ? "disetujui" : "proses"
+      });
+    } else {
+      await updateDoc(doc(db,"pengajuan",id), { history:[...(p.history||[]), historyEntry], status:"ditolak" });
+    }
+    toast(action==="approve"?"Pengajuan disetujui.":"Pengajuan ditolak.");
+  }catch(e){ console.error(e); toast("Gagal memproses pengajuan.", true); }
+}
+function openPengajuanFormModal(existing){
+  openModal(`
+    <h3>${existing?"Revisi":"Ajukan"} Pengajuan</h3>
+    <div class="field"><label>Judul</label><input type="text" id="pj-judul" value="${existing?.judul||""}" placeholder="Contoh: Renovasi Tempat Wudhu"></div>
+    <div class="field"><label>Jenis</label>
+      <select id="pj-jenis">
+        <option value="dana" ${existing?.jenis==='dana'?'selected':''}>Pengajuan Dana</option>
+        <option value="fasilitas" ${existing?.jenis==='fasilitas'?'selected':''}>Izin Pakai Fasilitas</option>
+        <option value="usulan" ${existing?.jenis==='usulan'?'selected':''}>Usulan Kegiatan</option>
+      </select>
+    </div>
+    <div class="field"><label>Jumlah Dana (Rp, opsional)</label><input type="number" id="pj-jumlah" value="${existing?.jumlah||""}" min="0"></div>
+    <div class="field"><label>Deskripsi</label><textarea id="pj-deskripsi" rows="2">${existing?.deskripsi||""}</textarea></div>
+    <div class="field"><label>Urutan Persetujuan (pilih &amp; centang sesuai urutan)</label>
+      <div class="radio-row" style="flex-wrap:wrap; gap:10px;">
+        ${APPROVER_ROLE_OPTS.map(r=>`<label><input type="checkbox" class="pj-approver" value="${r.id}" ${(existing?.approverRoles||[]).includes(r.id)?'checked':''}> ${r.label}</label>`).join("")}
+      </div>
+      <div style="font-size:11px; color:#8A9895; margin-top:4px;">Dicentang berurutan dari atas ke bawah sesuai daftar di atas.</div>
+    </div>
+    <p class="form-error" id="pj-error"></p>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="window.__closeModal()">Batal</button><button class="btn btn-primary" id="btn-save-pengajuan">${existing?"Ajukan Ulang":"Ajukan"}</button></div>
+  `);
+  $("#btn-save-pengajuan").addEventListener("click", async ()=>{
+    const errEl = $("#pj-error"); errEl.style.display="none";
+    const judul = $("#pj-judul").value.trim();
+    const deskripsi = $("#pj-deskripsi").value.trim();
+    const approverRoles = APPROVER_ROLE_OPTS.filter(r=>document.querySelector(`.pj-approver[value="${r.id}"]`).checked).map(r=>r.id);
+    if(!judul){ errEl.textContent="Judul wajib diisi."; errEl.style.display="block"; return; }
+    if(approverRoles.length===0){ errEl.textContent="Pilih minimal 1 peran approver."; errEl.style.display="block"; return; }
+    const data = {
+      judul, jenis: $("#pj-jenis").value, jumlah: Number($("#pj-jumlah").value)||0, deskripsi, approverRoles,
+      pemohonUid: currentUser.uid, pemohonNama: currentUserDoc.nama||currentUserDoc.displayName,
+      currentStep: 0, status:"proses"
+    };
+    try{
+      if(existing){
+        await updateDoc(doc(db,"pengajuan",existing.id), {
+          ...data, history:[...(existing.history||[]), {action:"revisi", by:currentUser.uid, byName:currentUserDoc.nama||currentUserDoc.displayName, note:"Direvisi & diajukan ulang", at:new Date().toISOString()}]
+        });
+      } else {
+        await addDoc(collection(db,"pengajuan"), {...data, history:[], createdAt:serverTimestamp(), createdAtSort:Date.now()});
+      }
+      closeModal(); toast("Pengajuan tersimpan.");
+    }catch(e){ console.error(e); errEl.textContent="Gagal menyimpan pengajuan."; errEl.style.display="block"; }
+  });
+}
+
+/* ================= SURAT MODULE ================= */
+let suratList = [];
+let suratUnsub = null;
+function canEditSurat(){
+  const r = currentUserDoc.roles||[];
+  return r.includes("godmode")||r.includes("admin")||r.includes("sekretaris")||r.includes("ketua");
+}
+function romawiBulan(m){
+  return ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"][m-1];
+}
+function initSuratView(){
+  const main = $("#main-content");
+  main.innerHTML = `
+    <div class="topbar">
+      <div><p class="eyebrow">Administrasi</p><h1>Surat Menyurat</h1><p class="desc">Kop surat resmi &amp; penomoran otomatis</p></div>
+      ${canEditSurat() ? `<button class="btn btn-gold" id="btn-add-surat">+ Buat Surat</button>` : ``}
+    </div>
+    <div class="kop">
+      <div class="kop-emblem"><svg viewBox="0 0 100 100" fill="none"><path d="M50 4 L58 32 L50 50 L42 32 Z M96 39 L68 47 L50 39 L68 31 Z M79 96 L58 76 L50 50 L71 68 Z M21 96 L42 76 L50 50 L29 68 Z M4 39 L32 47 L50 39 L32 31 Z" fill="currentColor"/></svg></div>
+      <h4>MASJID MUQODDIMATUL HIDAYAH</h4>
+      <p>Sekretariat Dewan Kemakmuran Masjid (DKM)</p>
+      <hr>
+    </div>
+    <div class="panel"><div class="panel-head"><h3>Daftar Surat</h3></div><div id="surat-list"><div class="empty-state"><p>Memuat…</p></div></div></div>
+  `;
+  $("#btn-add-surat")?.addEventListener("click", ()=>openSuratModal());
+  if(suratUnsub) suratUnsub();
+  suratUnsub = onSnapshot(query(collection(db,"surat"), orderBy("createdAtSort","desc")), (snap)=>{
+    suratList = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderSuratList();
+  });
+}
+function renderSuratList(){
+  const el = $("#surat-list");
+  if(!el) return;
+  if(suratList.length===0){ el.innerHTML = emptyState("Belum ada surat","Buat surat resmi pertama."); return; }
+  el.innerHTML = `<div class="table-scroll"><table>
+    <thead><tr><th>Nomor</th><th>Perihal</th><th>Tanggal</th>${canEditSurat()?'<th></th>':''}</tr></thead>
+    <tbody>${suratList.map(s=>`<tr>
+      <td class="mono">${s.nomor}</td><td>${s.perihal}</td><td>${fmtTanggalID(s.tanggal)}</td>
+      ${canEditSurat()?`<td><button class="btn btn-ghost btn-sm" data-edit-surat="${s.id}">Edit</button></td>`:''}
+    </tr>`).join("")}</tbody>
+  </table></div>`;
+  $$('[data-edit-surat]').forEach(b=>b.addEventListener("click", ()=>openSuratModal(suratList.find(x=>x.id===b.dataset.editSurat))));
+}
+function openSuratModal(existing){
+  const today = new Date();
+  const kodeDefault = existing?.kode || "UND";
+  const nomorUrut = existing?.nomorUrut || (suratList.filter(s=>s.kode===kodeDefault && s.tahun===today.getFullYear()).length + 1);
+  const nomorOtomatis = `${String(nomorUrut).padStart(3,"0")}/${kodeDefault}/DKM-MMH/${romawiBulan(today.getMonth()+1)}/${today.getFullYear()}`;
+  openModal(`
+    <h3>${existing?"Edit":"Buat"} Surat</h3>
+    <div class="field"><label>Jenis Surat</label>
+      <select id="st-kode">
+        <option value="UND" ${kodeDefault==='UND'?'selected':''}>Undangan</option>
+        <option value="KET" ${kodeDefault==='KET'?'selected':''}>Keterangan</option>
+        <option value="EDR" ${kodeDefault==='EDR'?'selected':''}>Edaran</option>
+        <option value="LAIN" ${kodeDefault==='LAIN'?'selected':''}>Lainnya</option>
+      </select>
+    </div>
+    <div class="field"><label>Nomor Surat (otomatis, bisa diedit)</label><input type="text" id="st-nomor" value="${existing?.nomor||nomorOtomatis}"></div>
+    <div class="field"><label>Perihal</label><input type="text" id="st-perihal" value="${existing?.perihal||""}" placeholder="Undangan Rapat Pengurus"></div>
+    <div class="field"><label>Tanggal</label><input type="date" id="st-tanggal" value="${existing?.tanggal||today.toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Isi Ringkas (opsional)</label><textarea id="st-isi" rows="3">${existing?.isi||""}</textarea></div>
+    <p class="form-error" id="st-error"></p>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="window.__closeModal()">Batal</button><button class="btn btn-primary" id="btn-save-surat">Simpan</button></div>
+  `);
+  $("#btn-save-surat").addEventListener("click", async ()=>{
+    const errEl = $("#st-error"); errEl.style.display="none";
+    const perihal = $("#st-perihal").value.trim();
+    const nomor = $("#st-nomor").value.trim();
+    if(!perihal || !nomor){ errEl.textContent="Nomor dan perihal wajib diisi."; errEl.style.display="block"; return; }
+    const data = {
+      kode: $("#st-kode").value, nomorUrut, nomor, perihal, tanggal: $("#st-tanggal").value,
+      isi: $("#st-isi").value.trim(), tahun: today.getFullYear()
+    };
+    try{
+      if(existing) await updateDoc(doc(db,"surat",existing.id), data);
+      else await addDoc(collection(db,"surat"), {...data, createdAt:serverTimestamp(), createdAtSort:Date.now(), createdBy:currentUser.uid});
+      closeModal(); toast("Surat tersimpan.");
+    }catch(e){ console.error(e); errEl.textContent="Gagal menyimpan surat."; errEl.style.display="block"; }
+  });
+}
+
+/* ================= ASET MODULE ================= */
+let asetList = [];
+let asetUnsub = null;
+function canEditAset(){
+  const r = currentUserDoc.roles||[];
+  return r.includes("godmode")||r.includes("admin")||r.includes("sekretaris")||r.includes("ketua");
+}
+function initAsetView(){
+  const main = $("#main-content");
+  main.innerHTML = `
+    <div class="topbar">
+      <div><p class="eyebrow">Fasilitas</p><h1>Aset &amp; Inventaris</h1><p class="desc">Barang milik masjid &amp; kondisinya</p></div>
+      ${canEditAset() ? `<button class="btn btn-gold" id="btn-add-aset">+ Tambah Aset</button>` : ``}
+    </div>
+    <div class="panel"><div class="panel-head"><h3>Daftar Aset</h3></div><div id="aset-list"><div class="empty-state"><p>Memuat…</p></div></div></div>
+  `;
+  $("#btn-add-aset")?.addEventListener("click", ()=>openAsetModal());
+  if(asetUnsub) asetUnsub();
+  asetUnsub = onSnapshot(collection(db,"aset"), (snap)=>{
+    asetList = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderAsetList();
+  });
+}
+function renderAsetList(){
+  const el = $("#aset-list");
+  if(!el) return;
+  if(asetList.length===0){ el.innerHTML = emptyState("Belum ada aset","Tambahkan data aset masjid pertama."); return; }
+  el.innerHTML = `<div class="table-scroll"><table>
+    <thead><tr><th>Nama Barang</th><th>Kondisi</th><th>Lokasi</th>${canEditAset()?'<th></th>':''}</tr></thead>
+    <tbody>${asetList.map(a=>`<tr>
+      <td>${a.nama}</td>
+      <td><span class="pill ${a.kondisi==='Baik'?'pill-ok':(a.kondisi==='Rusak'?'pill-no':'pill-wait')}">${a.kondisi}</span></td>
+      <td>${a.lokasi||"-"}</td>
+      ${canEditAset()?`<td style="white-space:nowrap;"><button class="btn btn-ghost btn-sm" data-edit-aset="${a.id}">Edit</button> <button class="btn btn-danger btn-sm" data-del-aset="${a.id}">Hapus</button></td>`:''}
+    </tr>`).join("")}</tbody>
+  </table></div>`;
+  $$('[data-edit-aset]').forEach(b=>b.addEventListener("click", ()=>openAsetModal(asetList.find(x=>x.id===b.dataset.editAset))));
+  $$('[data-del-aset]').forEach(b=>b.addEventListener("click", async ()=>{
+    if(!confirm("Hapus aset ini?")) return;
+    try{ await deleteDoc(doc(db,"aset",b.dataset.delAset)); toast("Aset dihapus."); }
+    catch(e){ console.error(e); toast("Gagal menghapus.", true); }
+  }));
+}
+function openAsetModal(existing){
+  openModal(`
+    <h3>${existing?"Edit":"Tambah"} Aset</h3>
+    <div class="field"><label>Nama Barang</label><input type="text" id="as-nama" value="${existing?.nama||""}" placeholder="Sound System Utama"></div>
+    <div class="field"><label>Kondisi</label>
+      <select id="as-kondisi">
+        <option value="Baik" ${existing?.kondisi==='Baik'?'selected':''}>Baik</option>
+        <option value="Perlu Perbaikan" ${existing?.kondisi==='Perlu Perbaikan'?'selected':''}>Perlu Perbaikan</option>
+        <option value="Rusak" ${existing?.kondisi==='Rusak'?'selected':''}>Rusak</option>
+      </select>
+    </div>
+    <div class="field"><label>Lokasi</label><input type="text" id="as-lokasi" value="${existing?.lokasi||""}" placeholder="Ruang Utama"></div>
+    <div class="field"><label>Catatan (opsional)</label><textarea id="as-catatan" rows="2">${existing?.catatan||""}</textarea></div>
+    <p class="form-error" id="as-error"></p>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="window.__closeModal()">Batal</button><button class="btn btn-primary" id="btn-save-aset">Simpan</button></div>
+  `);
+  $("#btn-save-aset").addEventListener("click", async ()=>{
+    const errEl = $("#as-error"); errEl.style.display="none";
+    const nama = $("#as-nama").value.trim();
+    if(!nama){ errEl.textContent="Nama barang wajib diisi."; errEl.style.display="block"; return; }
+    const data = { nama, kondisi:$("#as-kondisi").value, lokasi:$("#as-lokasi").value.trim(), catatan:$("#as-catatan").value.trim() };
+    try{
+      if(existing) await updateDoc(doc(db,"aset",existing.id), data);
+      else await addDoc(collection(db,"aset"), {...data, createdAt:serverTimestamp(), createdBy:currentUser.uid});
+      closeModal(); toast("Aset tersimpan.");
+    }catch(e){ console.error(e); errEl.textContent="Gagal menyimpan."; errEl.style.display="block"; }
   });
 }
 
