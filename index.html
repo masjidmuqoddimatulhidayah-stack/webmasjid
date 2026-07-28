@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIMAS — Masjid Muqoddimatul Hidayah</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --teal-950:#0A2E2A; --teal-900:#0F4C46; --teal-700:#166358;
+    --teal-100:#E4EDEA; --teal-50:#F5F8F7;
+    --gold-500:#C9A227; --gold-400:#D9BA53;
+    --ink:#16221F; --paper:#FBFAF7; --white:#FFFFFF;
+    --red-600:#B4442E; --green-700:#2F6B3F; --line:#DDE4E1;
+    --shadow: 0 1px 2px rgba(15,76,70,.06), 0 8px 24px -12px rgba(15,76,70,.18);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0; background:var(--paper); color:var(--ink); font-family:'Plus Jakarta Sans',sans-serif; -webkit-font-smoothing:antialiased; font-size:16px; line-height:1.6;}
+  h1,h2,h3,.display{font-family:'Amiri',serif;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  button, input, select, textarea{font-family:inherit; font-size:16px;}
+  button{cursor:pointer;}
+  ::selection{background:var(--gold-400); color:var(--teal-950);}
+  .star{width:1em;height:1em;display:inline-block;}
+  .star svg{width:100%;height:100%;display:block;}
+  [hidden]{display:none !important;}
+
+  /* ===== LOADING ===== */
+  #loading{position:fixed; inset:0; background:var(--teal-950); display:flex; align-items:center; justify-content:center; z-index:999; color:#fff; flex-direction:column; gap:14px;}
+  #loading .star{width:38px;height:38px; color:var(--gold-500); animation:spin 1.4s linear infinite;}
+  @keyframes spin{from{transform:rotate(0)} to{transform:rotate(360deg)}}
+
+  /* ===== LOGIN ===== */
+  #login-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(1200px 600px at 50% -10%, rgba(201,162,39,.15), transparent 60%), var(--teal-950);
+    padding:24px;
+  }
+  .login-card{width:100%; max-width:420px; background:var(--paper); border-radius:20px; padding:44px 34px; box-shadow:0 30px 60px -20px rgba(0,0,0,.5); text-align:center;}
+  .login-emblem{width:58px;height:58px; margin:0 auto 18px; color:var(--gold-500);}
+  .login-card h1{font-size:27px; color:var(--teal-950); margin:0 0 6px;}
+  .login-sub{font-size:14.5px; color:#5C6D6A; margin:0 0 30px; line-height:1.6;}
+  .btn{display:inline-flex; align-items:center; justify-content:center; gap:9px; border:none; border-radius:12px; padding:14px 20px; font-weight:700; font-size:15px;}
+  .btn-google{background:#fff; color:#3c4043; border:1.5px solid var(--line); width:100%; box-shadow:0 1px 3px rgba(0,0,0,.08);}
+  .btn-google:hover{background:#F8F8F8;}
+  .btn-primary{background:var(--teal-900); color:#fff;}
+  .btn-primary:hover{background:var(--teal-700);}
+  .btn-gold{background:var(--gold-500); color:var(--teal-950);}
+  .btn-gold:hover{background:var(--gold-400);}
+  .btn-ghost{background:transparent; color:var(--teal-900); border:1.5px solid var(--line);}
+  .btn-danger{background:transparent; color:var(--red-600); border:1.5px solid rgba(180,68,46,.3);}
+  .btn-sm{padding:9px 14px; font-size:13.5px; border-radius:9px;}
+  .btn-block{width:100%;}
+  .login-note{margin-top:24px; font-size:12px; color:#8A9895; line-height:1.7; border-top:1px solid var(--line); padding-top:16px;}
+
+  /* ===== PENDING / STATUS SCREENS ===== */
+  #pending-screen, #rejected-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+    background:var(--paper);
+  }
+  .status-card{max-width:440px; width:100%; background:#fff; border:1px solid var(--line); border-radius:18px; padding:36px 30px; text-align:center; box-shadow:var(--shadow);}
+  .status-icon{width:52px;height:52px; margin:0 auto 16px; border-radius:50%; display:flex; align-items:center; justify-content:center;}
+  .status-icon.wait{background:#FBF1DC; color:#9A7415;}
+  .status-icon.no{background:#F7E9E5; color:var(--red-600);}
+  .status-card h2{font-size:20px; color:var(--teal-950); margin-bottom:8px;}
+  .status-card p{font-size:14px; color:#5C6D6A; line-height:1.7;}
+  .badge-role{display:inline-block; background:var(--teal-100); color:var(--teal-900); font-size:12px; font-weight:700; padding:4px 12px; border-radius:100px; margin-top:10px;}
+
+  /* ===== ROLE PICKER (first-time) ===== */
+  #rolepick-screen{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--paper);}
+  .rolepick-card{max-width:520px; width:100%;}
+  .rolepick-card h2{font-size:23px; color:var(--teal-950); text-align:center; margin-bottom:6px;}
+  .rolepick-card .sub{text-align:center; font-size:14px; color:#5C6D6A; margin-bottom:24px;}
+  .role-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:22px;}
+  .role-opt{
+    background:#fff; border:2px solid var(--line); border-radius:14px; padding:16px; text-align:left;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .role-opt.selected{border-color:var(--teal-900); background:var(--teal-50);}
+  .role-opt strong{font-size:14.5px; color:var(--teal-950);}
+  .role-opt span{font-size:12px; color:#6B7C79;}
+
+  /* ===== PROFILE COMPLETION ===== */
+  #profile-screen{min-height:100vh; padding:24px; background:var(--paper); display:flex; align-items:center; justify-content:center;}
+  .profile-card{max-width:560px; width:100%; background:#fff; border-radius:18px; padding:32px; box-shadow:var(--shadow); border:1px solid var(--line);}
+  .profile-card h2{font-size:21px; color:var(--teal-950); margin-bottom:4px;}
+  .profile-card .sub{font-size:13.5px; color:#6B7C79; margin-bottom:22px;}
+  .field{text-align:left; margin-bottom:15px;}
+  .field label{display:block; font-size:13px; font-weight:700; color:var(--teal-900); margin-bottom:6px;}
+  .field input, .field select, .field textarea{
+    width:100%; padding:12px 14px; border:1.5px solid var(--line); border-radius:10px; background:#fff; color:var(--ink);
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{outline:none; border-color:var(--teal-700);}
+  .field.readonly-role{background:var(--teal-50); border-radius:10px; padding:12px 14px;}
+  .field.readonly-role .rr-label{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#8A9895; font-weight:700;}
+  .field.readonly-role .rr-val{font-size:14.5px; color:var(--teal-950); font-weight:700; margin-top:2px;}
+  .photo-upload{display:flex; align-items:center; gap:14px; margin-bottom:18px;}
+  .photo-preview{width:64px;height:64px; border-radius:50%; background:var(--teal-100); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; border:2px solid var(--line);}
+  .photo-preview img{width:100%;height:100%; object-fit:cover;}
+  .form-error{color:var(--red-600); font-size:13px; margin:-6px 0 12px; display:none;}
+
+  /* ===== APP SHELL ===== */
+  #app-view{display:none;}
+  .demo-bar{
+    background:var(--teal-950); color:#fff; padding:7px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    font-size:11.5px; position:sticky; top:0; z-index:100; border-bottom:2px solid var(--gold-500);
+  }
+  .demo-bar .db-tag{font-weight:800; letter-spacing:.05em; color:var(--gold-400); font-size:10.5px; text-transform:uppercase;}
+  .view-toggle{display:flex; background:rgba(255,255,255,.08); border-radius:8px; padding:2px; margin-left:auto;}
+  .view-toggle button{border:none; background:transparent; color:#B9CBC7; padding:5px 11px; border-radius:6px; font-size:11px; font-weight:700;}
+  .view-toggle button.active{background:var(--gold-500); color:var(--teal-950);}
+
+  .app-frame{max-width:1180px; margin:0 auto;}
+  body.mode-mobile .app-frame{max-width:430px; box-shadow:0 0 40px rgba(0,0,0,.15); margin:0 auto;}
+  .shell{display:grid; grid-template-columns:240px 1fr; min-height:calc(100vh - 40px);}
+  body.mode-mobile .shell{grid-template-columns:1fr;}
+
+  .sidebar{background:var(--teal-950); color:var(--teal-100); padding:24px 18px; display:flex; flex-direction:column; position:relative; overflow:hidden;}
+  .sidebar::before{content:""; position:absolute; inset:0; background-image:radial-gradient(circle at 1px 1px, rgba(201,162,39,.25) 1px, transparent 0); background-size:20px 20px; opacity:.5; pointer-events:none;}
+  body.mode-mobile .sidebar{display:none;}
+  .brand{display:flex; align-items:center; gap:10px; margin-bottom:4px; position:relative;}
+  .brand .star{color:var(--gold-500); width:24px; height:24px;}
+  .brand-name{font-size:18px; color:#fff;}
+  .brand-sub{font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:var(--gold-400); margin:0 0 24px; position:relative;}
+  .nav{display:flex; flex-direction:column; gap:3px; position:relative; flex:1;}
+  .nav-item{display:flex; align-items:center; gap:11px; padding:11px 12px; border-radius:9px; font-size:14px; font-weight:600; color:#B9CBC7; background:transparent; border:none; width:100%; text-align:left;}
+  .nav-item svg{width:17px;height:17px; flex-shrink:0; opacity:.85;}
+  .nav-item:hover{background:rgba(255,255,255,.05); color:#fff;}
+  .nav-item.active{background:var(--teal-900); color:#fff; box-shadow:inset 3px 0 0 var(--gold-500);}
+  .sidebar-footer{position:relative; padding-top:16px; margin-top:12px; border-top:1px solid rgba(255,255,255,.1);}
+  .sf-name{font-size:13.5px; color:#fff; font-weight:700;}
+  .sf-role{font-size:11.5px; color:#8DA39E; margin:2px 0 10px;}
+  .logout-link{font-size:12px; color:#8DA39E; background:none; border:none; padding:0; text-decoration:underline;}
+  .logout-link:hover{color:#fff;}
+
+  .mtopbar{display:none; align-items:center; justify-content:space-between; background:var(--teal-950); padding:11px 16px; position:sticky; top:0; z-index:20;}
+  body.mode-mobile .mtopbar{display:flex;}
+  .mtopbar .mt-left{display:flex; align-items:center; gap:9px;}
+  .burger{width:19px; display:flex; flex-direction:column; gap:3px; background:none; border:none;}
+  .burger span{height:2px; background:var(--gold-400); border-radius:1px;}
+  .mt-brand{font-family:'Amiri',serif; color:#fff; font-size:14px;}
+  .avatar{width:28px; height:28px; border-radius:50%; background:var(--gold-500); color:var(--teal-950); font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; overflow:hidden;}
+  .avatar img{width:100%;height:100%;object-fit:cover;}
+
+  .mbottomnav{display:none; position:sticky; bottom:0; background:#fff; border-top:1px solid var(--line); padding:7px 4px 9px; z-index:20;}
+  body.mode-mobile .mbottomnav{display:flex; justify-content:space-around;}
+  .mbottomnav button{background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:3px; color:#8A9895; font-size:10px; font-weight:700; padding:4px 6px;}
+  .mbottomnav button svg{width:18px;height:18px;}
+  .mbottomnav button.active{color:var(--teal-900);}
+  .mmore-sheet{display:none; position:fixed; inset:0; background:rgba(10,46,42,.5); z-index:90;}
+  .mmore-sheet.open{display:flex; align-items:flex-end;}
+  .mmore-panel{background:var(--paper); width:100%; max-width:430px; margin:0 auto; border-radius:16px 16px 0 0; padding:18px; max-height:70vh; overflow-y:auto;}
+
+  .main{padding:28px 32px 60px; width:100%;}
+  body.mode-mobile .main{padding:16px 16px 24px;}
+  .topbar{display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:22px; flex-wrap:wrap; gap:10px;}
+  .topbar h1{font-size:25px; color:var(--teal-950); margin:0 0 4px;}
+  .topbar .eyebrow{font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--gold-500); font-weight:700; margin:0 0 5px;}
+  .topbar .desc{font-size:13.5px; color:#5C6D6A; margin:0;}
+  .view{display:none;} .view.active{display:block;}
+
+  .stat-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin-bottom:24px;}
+  body.mode-mobile .stat-grid{grid-template-columns:1fr 1fr;}
+  .stat-card{background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:var(--shadow);}
+  .stat-card .label{font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; color:#8A9895; font-weight:700; margin-bottom:8px;}
+  .stat-card .value{font-family:'JetBrains Mono',monospace; font-size:21px; font-weight:700; color:var(--teal-950);}
+
+  .panel{background:#fff; border:1px solid var(--line); border-radius:16px; padding:22px; margin-bottom:20px; box-shadow:var(--shadow);}
+  body.mode-mobile .panel{padding:16px; border-radius:13px;}
+  .panel-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; gap:10px; flex-wrap:wrap;}
+  .panel-head h3{font-size:16px; margin:0; color:var(--teal-950);}
+
+  .prayer-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(100px,1fr)); gap:10px;}
+  body.mode-mobile .prayer-grid{grid-template-columns:repeat(3,1fr);}
+  .prayer-cell{background:var(--teal-50); border-radius:12px; padding:14px 8px; text-align:center;}
+  .prayer-cell.now{background:var(--teal-900); color:#fff;}
+  .prayer-cell .pname{font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; opacity:.85;}
+  .prayer-cell .ptime{font-family:'JetBrains Mono',monospace; font-size:19px; margin-top:4px; font-weight:700;}
+
+  table{width:100%; border-collapse:collapse; font-size:14px;}
+  th{text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#8A9895; font-weight:700; padding:0 10px 9px; border-bottom:1.5px solid var(--line);}
+  td{padding:12px 10px; border-bottom:1px solid var(--teal-50); vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  .table-scroll{overflow-x:auto;}
+  .pill{display:inline-block; padding:3px 10px; border-radius:100px; font-size:11.5px; font-weight:700;}
+  .pill-wait{background:#FBF1DC; color:#9A7415;} .pill-ok{background:#E7F2E9; color:var(--green-700);} .pill-no{background:#F7E9E5; color:var(--red-600);}
+  .badge-role-sm{display:inline-block; background:var(--teal-100); color:var(--teal-900); font-size:10.5px; font-weight:700; padding:2px 9px; border-radius:100px; margin:1px 2px 1px 0;}
+
+  .empty-state{text-align:center; padding:40px 16px; color:#8A9895;}
+  .empty-state .star{width:30px;height:30px; color:var(--gold-400); margin-bottom:9px;}
+  .empty-state .et{font-family:'Amiri',serif; font-size:15.5px; color:var(--teal-900);}
+  .empty-state p{margin:4px 0 0; font-size:12.5px;}
+
+  .toast{position:fixed; bottom:22px; right:22px; background:var(--teal-950); color:#fff; padding:13px 18px; border-radius:11px; font-size:13.5px; box-shadow:0 10px 30px rgba(0,0,0,.3); transform:translateY(20px); opacity:0; pointer-events:none; transition:all .25s ease; z-index:200; max-width:320px;}
+  .toast.error{background:var(--red-600);}
+  body.mode-mobile .toast{right:14px; left:14px; bottom:70px; max-width:none;}
+  .toast.show{transform:translateY(0); opacity:1;}
+
+  .placeholder-panel{border:1.5px dashed var(--line); border-radius:14px; padding:40px 20px; text-align:center; color:#8A9895;}
+  .placeholder-panel strong{color:var(--teal-900); display:block; font-family:'Amiri',serif; font-size:16px; margin-bottom:4px;}
+</style>
+</head>
+<body class="mode-auto">
+
+<div id="loading"><span class="star"><svg viewBox="0 0 100 100" fill="none"><path d="M50 4 L58 32 L50 50 L42 32 Z M96 39 L68 47 L50 39 L68 31 Z M79 96 L58 76 L50 50 L71 68 Z M21 96 L42 76 L50 50 L29 68 Z M4 39 L32 47 L50 39 L32 31 Z" fill="currentColor"/></svg></span><span style="font-size:13px; color:#B9CBC7;">Memuat SIMAS…</span></div>
+
+<!-- ===== LOGIN ===== -->
+<div id="login-screen" hidden>
+  <div class="login-card">
+    <div class="login-emblem"><svg viewBox="0 0 100 100" fill="none"><path d="M50 4 L61 39 L98 39 L68 61 L79 96 L50 74 L21 96 L32 61 L2 39 L39 39 Z" fill="currentColor" opacity="0.15"/><path d="M50 4 L58 32 L50 50 L42 32 Z M96 39 L68 47 L50 39 L68 31 Z M79 96 L58 76 L50 50 L71 68 Z M21 96 L42 76 L50 50 L29 68 Z M4 39 L32 47 L50 39 L32 31 Z" fill="currentColor"/></svg></div>
+    <h1>SIMAS</h1>
+    <p class="login-sub">Sistem Informasi Masjid<br>Masjid Muqoddimatul Hidayah</p>
+    <button class="btn btn-google btn-block" id="btn-google-login">
+      <svg width="19" height="19" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.8 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6 29.6 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.5 0 10.4-1.9 14.3-5.1l-6.6-5.6C29.6 35 26.9 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.6 5.1C9.6 39.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.2 4.3-4.1 5.7l6.6 5.6C41.5 36 44 30.5 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
+      Masuk dengan Google
+    </button>
+    <p class="login-note">Login memakai akun Google — aman, tanpa password baru. Setelah masuk, akun baru akan diminta memilih peran dan menunggu persetujuan pengurus (kecuali akun pertama, yang otomatis menjadi God Mode).</p>
+  </div>
+</div>
+
+<!-- ===== ROLE PICKER (first time) ===== -->
+<div id="rolepick-screen" hidden>
+  <div class="rolepick-card">
+    <h2>Pilih Peran Anda</h2>
+    <p class="sub">Peran akan ditinjau oleh pengurus sebelum akun aktif sepenuhnya.</p>
+    <div class="role-grid" id="role-grid"></div>
+    <button class="btn btn-primary btn-block" id="btn-submit-role">Ajukan Peran Ini</button>
+  </div>
+</div>
+
+<!-- ===== PENDING ===== -->
+<div id="pending-screen" hidden>
+  <div class="status-card">
+    <div class="status-icon wait">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+    </div>
+    <h2>Menunggu Persetujuan</h2>
+    <p>Pendaftaran Anda sedang ditinjau oleh pengurus masjid. Anda akan bisa mengakses aplikasi setelah disetujui.</p>
+    <div class="badge-role" id="pending-role-label"></div>
+    <div style="margin-top:22px;"><button class="btn btn-ghost btn-sm" id="btn-logout-pending">Keluar</button></div>
+  </div>
+</div>
+
+<!-- ===== REJECTED ===== -->
+<div id="rejected-screen" hidden>
+  <div class="status-card">
+    <div class="status-icon no">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+    </div>
+    <h2>Pendaftaran Belum Disetujui</h2>
+    <p>Pengurus belum menyetujui pendaftaran Anda. Silakan hubungi pengurus masjid untuk informasi lebih lanjut.</p>
+    <div style="margin-top:22px;"><button class="btn btn-ghost btn-sm" id="btn-logout-rejected">Keluar</button></div>
+  </div>
+</div>
+
+<!-- ===== PROFILE COMPLETION ===== -->
+<div id="profile-screen" hidden>
+  <div class="profile-card">
+    <h2>Lengkapi Profil</h2>
+    <p class="sub">Wajib diisi sebelum bisa mengakses aplikasi sepenuhnya.</p>
+
+    <div class="field readonly-role">
+      <div class="rr-label">Peran Anda</div>
+      <div class="rr-val" id="profile-role-display">—</div>
+    </div>
+
+    <div class="photo-upload">
+      <div class="photo-preview" id="photo-preview">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9AA8A5" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+      </div>
+      <div>
+        <input type="file" id="profile-photo-input" accept="image/*" style="display:none;">
+        <button class="btn btn-ghost btn-sm" id="btn-upload-photo" type="button">Unggah Foto</button>
+        <div style="font-size:11.5px; color:#8A9895; margin-top:5px;" id="photo-status">Opsional</div>
+      </div>
+    </div>
+
+    <div class="field"><label>Nama Lengkap</label><input type="text" id="p-nama" placeholder="Nama lengkap"></div>
+    <div class="field"><label>Gelar (opsional)</label><input type="text" id="p-gelar" placeholder="Contoh: S.Pd., H."></div>
+    <div class="field"><label>Jabatan Teknis (opsional)</label><input type="text" id="p-jabatan" placeholder="Contoh: Koordinator Keamanan"></div>
+    <div class="field"><label>Alamat</label><textarea id="p-alamat" placeholder="Alamat lengkap" rows="2"></textarea></div>
+    <div class="field"><label>Tanggal Lahir</label><input type="date" id="p-ttl"></div>
+    <div class="field"><label>Nomor WhatsApp</label><input type="tel" id="p-wa" placeholder="08xxxxxxxxxx"></div>
+
+    <p class="form-error" id="profile-error"></p>
+    <button class="btn btn-primary btn-block" id="btn-save-profile">Simpan &amp; Lanjutkan</button>
+  </div>
+</div>
+
+<!-- ===== APP ===== -->
+<div id="app-view">
+  <div class="demo-bar">
+    <span class="db-tag">SIMAS</span>
+    <span id="db-role-tag" style="color:#B9CBC7;"></span>
+    <div class="view-toggle">
+      <button data-mode="desktop">🖥️ Komputer</button>
+      <button data-mode="auto" class="active">↔️ Otomatis</button>
+      <button data-mode="mobile">📱 Mobile</button>
+    </div>
+  </div>
+
+  <div class="app-frame">
+    <div class="mtopbar">
+      <div class="mt-left">
+        <button class="burger" id="btn-msheet"><span></span><span></span><span></span></button>
+        <span class="mt-brand">SIMAS</span>
+      </div>
+      <div class="avatar" id="m-avatar">?</div>
+    </div>
+
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="star"><svg viewBox="0 0 100 100" fill="none"><path d="M50 4 L58 32 L50 50 L42 32 Z M96 39 L68 47 L50 39 L68 31 Z M79 96 L58 76 L50 50 L71 68 Z M21 96 L42 76 L50 50 L29 68 Z M4 39 L32 47 L50 39 L32 31 Z" fill="currentColor"/></svg></span>
+          <span class="brand-name">SIMAS</span>
+        </div>
+        <p class="brand-sub">Masjid Muqoddimatul Hidayah</p>
+        <nav class="nav" id="side-nav"></nav>
+        <div class="sidebar-footer">
+          <div class="sf-name" id="sf-name">—</div>
+          <div class="sf-role" id="sf-role">—</div>
+          <button class="logout-link" id="btn-logout">Keluar</button>
+        </div>
+      </aside>
+      <main class="main" id="main-content"></main>
+    </div>
+    <div class="mbottomnav" id="mbottom-nav"></div>
+  </div>
+</div>
+
+<div class="mmore-sheet" id="more-sheet">
+  <div class="mmore-panel"><h3 style="font-size:14px; color:var(--teal-950); margin-bottom:12px;">Semua Menu</h3><div id="more-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:9px;"></div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where,
+  onSnapshot, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* ============ FIREBASE CONFIG (Masjid Muqoddimatul Hidayah) ============ */
+const firebaseConfig = {
+  apiKey: "AIzaSyB-OzJH3v_fr0L2cechwtcRQ_i5krE1NsA",
+  authDomain: "masjidmuqoddimatulhidaya-d3cbc.firebaseapp.com",
+  projectId: "masjidmuqoddimatulhidaya-d3cbc",
+  storageBucket: "masjidmuqoddimatulhidaya-d3cbc.firebasestorage.app",
+  messagingSenderId: "570985632316",
+  appId: "1:570985632316:web:0e2dcbdcfd845c11882939"
+};
+const CLOUDINARY_CLOUD_NAME = "jrm851me";
+const CLOUDINARY_UPLOAD_PRESET = "simas-uploads";
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const googleProvider = new GoogleAuthProvider();
+
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+function toast(msg, isError=false){
+  const t = $("#toast"); t.textContent = msg; t.classList.toggle("error", isError); t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove("show"), 2600);
+}
+function showScreen(id){
+  ["loading","login-screen","rolepick-screen","pending-screen","rejected-screen","profile-screen","app-view"]
+    .forEach(s => { const el = $("#"+s); if(el) el.hidden = (s !== id); });
+  if(id === "app-view"){ $("#app-view").style.display = "block"; } else { $("#app-view").style.display = "none"; }
+}
+
+/* ============ ROLE DEFINITIONS ============ */
+const ROLE_DEFS = [
+  {id:"ketua", label:"Ketua DKM / Takmir", desc:"Pimpinan organisasi masjid"},
+  {id:"bendahara", label:"Bendahara", desc:"Mengelola keuangan masjid"},
+  {id:"sekretaris", label:"Sekretaris", desc:"Data jamaah, kegiatan, arsip"},
+  {id:"seksi", label:"Pengurus Seksi", desc:"Mengelola kegiatan seksi"},
+  {id:"jamaah", label:"Jamaah", desc:"Warga / anggota masjid"},
+  {id:"admin", label:"Admin", desc:"Kelola akun & sistem — perlu verifikasi God Mode"},
+];
+const ROLE_LABEL = Object.fromEntries(ROLE_DEFS.map(r=>[r.id,r.label]));
+ROLE_LABEL.godmode = "God Mode";
+
+const ALL_MENUS = [
+  {id:"dashboard", label:"Dashboard"},
+  {id:"keuangan", label:"Keuangan"},
+  {id:"jadwal", label:"Jadwal Sholat"},
+  {id:"jamaah", label:"Data Jamaah"},
+  {id:"kegiatan", label:"Kegiatan"},
+  {id:"pengajuan", label:"Pengajuan"},
+  {id:"surat", label:"Surat"},
+  {id:"pengumuman", label:"Pengumuman"},
+  {id:"aset", label:"Aset"},
+  {id:"statistik", label:"Statistik"},
+  {id:"user", label:"Kelola User"},
+];
+const ROLE_MENUS = {
+  godmode: ALL_MENUS.map(m=>m.id),
+  admin: ["dashboard","user","pengumuman","surat"],
+  ketua: ["dashboard","keuangan","jadwal","jamaah","kegiatan","pengajuan","surat","pengumuman","aset","statistik"],
+  bendahara: ["dashboard","keuangan","statistik","pengajuan"],
+  sekretaris: ["dashboard","jamaah","kegiatan","surat","pengumuman","aset"],
+  seksi: ["dashboard","kegiatan","pengajuan","pengumuman"],
+  jamaah: ["dashboard","jadwal","kegiatan","pengumuman","pengajuan"],
+};
+const ICONS = {
+  dashboard:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="10" width="7" height="11"/><rect x="14" y="3" width="7" height="18"/></svg>',
+  keuangan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9 9.5c0-1.4 1.3-2.5 3-2.5s3 1 3 2.3c0 3-6 1.4-6 4.4 0 1.3 1.3 2.3 3 2.3s3-1.1 3-2.5"/></svg>',
+  jadwal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>',
+  jamaah:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/><circle cx="17.5" cy="9" r="2.4"/><path d="M15 20c0-2.6 1.3-4.7 3.2-5.6"/></svg>',
+  kegiatan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  pengajuan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>',
+  surat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
+  pengumuman:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11v2a2 2 0 0 0 2 2h1l3 5V4L6 9H5a2 2 0 0 0-2 2Z"/><path d="M15 8a4 4 0 0 1 0 8"/></svg>',
+  aset:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  statistik:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>',
+  user:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>',
+  more:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>',
+};
+
+/* ============ AUTH FLOW ============ */
+let currentUser = null;
+let currentUserDoc = null;
+let selectedRole = null;
+
+$("#btn-google-login").addEventListener("click", async () => {
+  try { await signInWithPopup(auth, googleProvider); }
+  catch(e){ toast("Gagal masuk dengan Google. Coba lagi.", true); console.error(e); }
+});
+$("#btn-logout-pending").addEventListener("click", () => signOut(auth));
+$("#btn-logout-rejected").addEventListener("click", () => signOut(auth));
+$("#btn-logout").addEventListener("click", () => signOut(auth));
+
+onAuthStateChanged(auth, async (user) => {
+  showScreen("loading");
+  currentUser = user;
+  if(!user){ showScreen("login-screen"); return; }
+
+  const userRef = doc(db, "users", user.uid);
+  let snap;
+  try { snap = await getDoc(userRef); }
+  catch(e){ console.error(e); toast("Gagal memuat data akun.", true); showScreen("login-screen"); return; }
+
+  if(!snap.exists()){
+    // Cek apakah ini akun pertama di sistem -> otomatis God Mode
+    let isFirstUser = false;
+    try{
+      const usersSnap = await getDoc(doc(db, "meta", "bootstrap"));
+      isFirstUser = !usersSnap.exists();
+    }catch(e){ console.error(e); }
+
+    if(isFirstUser){
+      await setDoc(doc(db, "meta", "bootstrap"), { godModeAssigned:true, uid:user.uid, at:serverTimestamp() });
+      await setDoc(userRef, {
+        email:user.email, displayName:user.displayName, photoAuth:user.photoURL||"",
+        roles:["godmode"], status:"approved",
+        profileCompleted:false, createdAt:serverTimestamp()
+      });
+      toast("Selamat! Akun ini otomatis menjadi God Mode.");
+      currentUserDoc = (await getDoc(userRef)).data();
+      routeAfterAuth();
+      return;
+    } else {
+      renderRolePicker();
+      showScreen("rolepick-screen");
+      return;
+    }
+  }
+
+  currentUserDoc = snap.data();
+  listenOwnUserDoc(user.uid);
+  routeAfterAuth();
+});
+
+function listenOwnUserDoc(uid){
+  onSnapshot(doc(db,"users",uid), (snap)=>{
+    if(!snap.exists()) return;
+    currentUserDoc = snap.data();
+    routeAfterAuth();
+  });
+}
+
+function routeAfterAuth(){
+  if(!currentUserDoc) return;
+  const status = currentUserDoc.status;
+  if(status === "pending"){
+    $("#pending-role-label").textContent = (currentUserDoc.roles||[]).map(r=>ROLE_LABEL[r]||r).join(", ");
+    showScreen("pending-screen");
+    return;
+  }
+  if(status === "rejected"){
+    showScreen("rejected-screen");
+    return;
+  }
+  if(status === "approved" && !currentUserDoc.profileCompleted){
+    renderProfileForm();
+    showScreen("profile-screen");
+    return;
+  }
+  if(status === "approved" && currentUserDoc.profileCompleted){
+    initApp();
+    showScreen("app-view");
+    return;
+  }
+  showScreen("login-screen");
+}
+
+/* ============ ROLE PICKER ============ */
+function renderRolePicker(){
+  $("#role-grid").innerHTML = ROLE_DEFS.map(r => `
+    <button type="button" class="role-opt" data-role="${r.id}"><strong>${r.label}</strong><span>${r.desc}</span></button>
+  `).join("");
+  selectedRole = null;
+  $$(".role-opt").forEach(b => b.addEventListener("click", () => {
+    $$(".role-opt").forEach(x=>x.classList.remove("selected"));
+    b.classList.add("selected");
+    selectedRole = b.dataset.role;
+  }));
+}
+$("#btn-submit-role").addEventListener("click", async () => {
+  if(!selectedRole){ toast("Pilih salah satu peran dulu.", true); return; }
+  if(!currentUser) return;
+  try{
+    await setDoc(doc(db,"users",currentUser.uid), {
+      email: currentUser.email, displayName: currentUser.displayName, photoAuth: currentUser.photoURL||"",
+      roles:[selectedRole], status:"pending", profileCompleted:false, createdAt: serverTimestamp()
+    });
+    currentUserDoc = (await getDoc(doc(db,"users",currentUser.uid))).data();
+    listenOwnUserDoc(currentUser.uid);
+    routeAfterAuth();
+  }catch(e){ console.error(e); toast("Gagal mengajukan peran.", true); }
+});
+
+/* ============ PROFILE COMPLETION ============ */
+let uploadedPhotoUrl = "";
+function renderProfileForm(){
+  const roles = (currentUserDoc.roles||[]).map(r=>ROLE_LABEL[r]||r).join(", ");
+  $("#profile-role-display").textContent = roles || "—";
+  $("#p-nama").value = currentUserDoc.displayName || "";
+  uploadedPhotoUrl = "";
+  $("#photo-status").textContent = "Opsional";
+  $("#photo-preview").innerHTML = currentUser.photoURL
+    ? `<img src="${currentUser.photoURL}" alt="">`
+    : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9AA8A5" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>`;
+}
+$("#btn-upload-photo").addEventListener("click", () => $("#profile-photo-input").click());
+$("#profile-photo-input").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  $("#photo-status").textContent = "Mengunggah…";
+  try{
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, { method:"POST", body:formData });
+    const data = await res.json();
+    if(data.secure_url){
+      uploadedPhotoUrl = data.secure_url;
+      $("#photo-preview").innerHTML = `<img src="${uploadedPhotoUrl}" alt="">`;
+      $("#photo-status").textContent = "Terunggah ✓";
+    } else { throw new Error("upload gagal"); }
+  }catch(e){ console.error(e); $("#photo-status").textContent = "Gagal unggah, coba lagi"; }
+});
+$("#btn-save-profile").addEventListener("click", async () => {
+  const errEl = $("#profile-error"); errEl.style.display = "none";
+  const nama = $("#p-nama").value.trim();
+  const alamat = $("#p-alamat").value.trim();
+  const wa = $("#p-wa").value.trim();
+  if(!nama || !alamat || !wa){
+    errEl.textContent = "Nama, alamat, dan nomor WhatsApp wajib diisi.";
+    errEl.style.display = "block";
+    return;
+  }
+  try{
+    await updateDoc(doc(db,"users",currentUser.uid), {
+      nama, gelar: $("#p-gelar").value.trim(), jabatan: $("#p-jabatan").value.trim(),
+      alamat, ttl: $("#p-ttl").value, wa,
+      foto: uploadedPhotoUrl || currentUser.photoURL || "",
+      profileCompleted: true
+    });
+    toast("Profil tersimpan.");
+  }catch(e){ console.error(e); errEl.textContent = "Gagal menyimpan profil."; errEl.style.display = "block"; }
+});
+
+/* ============ MAIN APP ============ */
+let currentView = "dashboard";
+function primaryRole(){
+  const roles = currentUserDoc.roles || [];
+  if(roles.includes("godmode")) return "godmode";
+  if(roles.includes("admin")) return "admin";
+  return roles[0] || "jamaah";
+}
+function menusForUser(){
+  const roles = currentUserDoc.roles || [];
+  const set = new Set();
+  roles.forEach(r => (ROLE_MENUS[r]||[]).forEach(m=>set.add(m)));
+  if(set.size===0) ["dashboard"].forEach(m=>set.add(m));
+  return ALL_MENUS.filter(m=>set.has(m.id));
+}
+function initApp(){
+  $("#sf-name").textContent = currentUserDoc.nama || currentUserDoc.displayName || "—";
+  $("#sf-role").textContent = (currentUserDoc.roles||[]).map(r=>ROLE_LABEL[r]||r).join(", ");
+  $("#db-role-tag").textContent = "Login sebagai: " + ((currentUserDoc.roles||[]).map(r=>ROLE_LABEL[r]||r).join(", "));
+  const photo = currentUserDoc.foto || currentUser.photoURL;
+  $("#m-avatar").innerHTML = photo ? `<img src="${photo}">` : (currentUserDoc.nama||"?")[0].toUpperCase();
+  renderNav();
+  renderView();
+}
+function renderNav(){
+  const menus = menusForUser();
+  if(!menus.find(m=>m.id===currentView)) currentView = menus[0]?.id || "dashboard";
+  $("#side-nav").innerHTML = menus.map(m=>`
+    <button class="nav-item ${m.id===currentView?'active':''}" data-view="${m.id}">${ICONS[m.id]}<span>${m.label}</span></button>
+  `).join("");
+  $$("#side-nav .nav-item").forEach(b=>b.addEventListener("click", ()=>{ currentView=b.dataset.view; renderNav(); renderView(); }));
+
+  const primary = menus.slice(0,4);
+  $("#mbottom-nav").innerHTML = primary.map(m=>`
+    <button data-view="${m.id}" class="${m.id===currentView?'active':''}">${ICONS[m.id]}<span>${m.label}</span></button>
+  `).join("") + `<button id="btn-more">${ICONS.more}<span>Lainnya</span></button>`;
+  $$("#mbottom-nav button[data-view]").forEach(b=>b.addEventListener("click", ()=>{ currentView=b.dataset.view; renderNav(); renderView(); }));
+  $("#btn-more")?.addEventListener("click", openMoreSheet);
+}
+function openMoreSheet(){
+  const menus = menusForUser();
+  $("#more-grid").innerHTML = menus.map(m=>`<button data-view="${m.id}" style="background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--teal-900);">${ICONS[m.id]}<span>${m.label}</span></button>`).join("");
+  $$("#more-grid button").forEach(b=>b.addEventListener("click",()=>{ currentView=b.dataset.view; $("#more-sheet").classList.remove("open"); renderNav(); renderView(); }));
+  $("#more-sheet").classList.add("open");
+}
+$("#btn-msheet").addEventListener("click", openMoreSheet);
+$("#more-sheet").addEventListener("click", (e)=>{ if(e.target.id==="more-sheet") $("#more-sheet").classList.remove("open"); });
+
+function emptyState(title, sub){
+  return `<div class="empty-state"><span class="star"><svg viewBox="0 0 100 100" fill="none"><path d="M50 4 L58 32 L50 50 L42 32 Z M96 39 L68 47 L50 39 L68 31 Z M79 96 L58 76 L50 50 L71 68 Z M21 96 L42 76 L50 50 L29 68 Z M4 39 L32 47 L50 39 L32 31 Z" fill="currentColor"/></svg></span><div class="et">${title}</div><p>${sub}</p></div>`;
+}
+function placeholderModule(name){
+  return `<div class="topbar"><div><p class="eyebrow">Modul</p><h1>${name}</h1></div></div>
+    <div class="placeholder-panel"><strong>${name} — segera dibangun</strong>Modul ini akan menyusul setelah Fondasi (Auth, Role, Approval, Profil) selesai diuji.</div>`;
+}
+
+async function renderView(){
+  const main = $("#main-content");
+  if(currentView === "dashboard"){ main.innerHTML = viewDashboard(); loadJadwalSholat(); return; }
+  if(currentView === "user"){ main.innerHTML = "<div class='topbar'><div><p class='eyebrow'>Administrasi Sistem</p><h1>Kelola User</h1></div></div><div id='user-panel'></div>"; renderUserManagement(); return; }
+  main.innerHTML = placeholderModule(ALL_MENUS.find(m=>m.id===currentView)?.label || currentView);
+}
+
+function viewDashboard(){
+  return `
+    <div class="topbar"><div><p class="eyebrow">Ringkasan</p><h1>Assalamu'alaikum, ${(currentUserDoc.nama||currentUserDoc.displayName||"").split(" ")[0]}</h1><p class="desc">Masjid Muqoddimatul Hidayah</p></div></div>
+    <div class="panel"><div class="panel-head"><h3>Jadwal Sholat Hari Ini</h3></div>
+      <div class="prayer-grid" id="dash-prayer-grid"><div class="empty-state" style="grid-column:1/-1;">Memuat jadwal…</div></div>
+    </div>
+    <div class="placeholder-panel"><strong>Modul lain menyusul</strong>Keuangan, Kegiatan, Pengajuan, dan modul lainnya akan dibangun bertahap setelah Fondasi ini stabil.</div>
+  `;
+}
+async function loadJadwalSholat(){
+  const grid = $("#dash-prayer-grid");
+  if(!grid) return;
+  try{
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2,"0");
+    const mm = String(today.getMonth()+1).padStart(2,"0");
+    const yyyy = today.getFullYear();
+    // Kota default: Palembang (kode 1001 area contoh) — nanti disesuaikan lewat menu Pengaturan
+    const res = await fetch(`https://api.myquran.com/v2/sholat/jadwal/1109/${yyyy}/${mm}/${dd}`);
+    const json = await res.json();
+    if(!json.status) throw new Error("gagal");
+    const j = json.data.jadwal;
+    const order = [["Subuh", j.subuh],["Dzuhur", j.dzuhur],["Ashar", j.ashar],["Maghrib", j.maghrib],["Isya", j.isya]];
+    grid.innerHTML = order.map(([label,time])=>`<div class="prayer-cell"><div class="pname">${label}</div><div class="ptime">${time}</div></div>`).join("");
+  }catch(e){
+    console.error(e);
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><p>Jadwal sholat belum bisa dimuat. Cek koneksi atau coba lagi nanti.</p></div>`;
+  }
+}
+
+/* ============ KELOLA USER (Admin / God Mode) ============ */
+function renderUserManagement(){
+  const panel = $("#user-panel");
+  const myRole = primaryRole();
+  onSnapshot(query(collection(db,"users"), where("status","==","pending")), (snap) => {
+    const pendingUsers = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    panel.innerHTML = `
+      <div class="panel"><div class="panel-head"><h3>Menunggu Persetujuan (${pendingUsers.length})</h3></div>
+        <div id="pending-list">${pendingUsers.length===0 ? emptyState("Tidak ada pendaftaran baru","Semua pendaftaran sudah ditinjau.") : ""}</div>
+      </div>`;
+    const list = $("#pending-list");
+    pendingUsers.forEach(u => {
+      const roles = u.roles || [];
+      const isAdminRequest = roles.includes("admin");
+      const canApprove = isAdminRequest ? (myRole === "godmode") : (myRole === "godmode" || myRole === "admin");
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--teal-50); flex-wrap:wrap; gap:10px;";
+      row.innerHTML = `
+        <div>
+          <strong style="font-size:14px;">${u.displayName||u.email}</strong>
+          <div style="font-size:12px; color:#8A9895;">${u.email} — mengajukan: ${roles.map(r=>`<span class="badge-role-sm">${ROLE_LABEL[r]||r}</span>`).join("")}
+          ${isAdminRequest ? '<div style="color:var(--gold-500); font-weight:700; font-size:11px; margin-top:3px;">⚠ Perlu verifikasi God Mode</div>' : ''}</div>
+        </div>
+        <div style="display:flex; gap:7px; flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" ${canApprove?'':'disabled style="opacity:.4;"'} data-act="approve" data-id="${u.id}">Setujui</button>
+          <button class="btn btn-ghost btn-sm" ${canApprove?'':'disabled style="opacity:.4;"'} data-act="reject" data-id="${u.id}">Tolak</button>
+        </div>
+      `;
+      list.appendChild(row);
+    });
+    $$('#pending-list [data-act="approve"]').forEach(b=>b.addEventListener("click", async ()=>{
+      try{ await updateDoc(doc(db,"users",b.dataset.id), {status:"approved"}); toast("Pendaftar disetujui."); }
+      catch(e){ console.error(e); toast("Gagal menyetujui.", true); }
+    }));
+    $$('#pending-list [data-act="reject"]').forEach(b=>b.addEventListener("click", async ()=>{
+      try{ await updateDoc(doc(db,"users",b.dataset.id), {status:"rejected"}); toast("Pendaftar ditolak."); }
+      catch(e){ console.error(e); toast("Gagal menolak.", true); }
+    }));
+  });
+}
+
+/* ============ MOBILE / DESKTOP TOGGLE ============ */
+function setMode(mode){
+  document.body.classList.remove("mode-desktop-forced","mode-mobile","mode-auto");
+  $$(".view-toggle button").forEach(b=>b.classList.toggle("active", b.dataset.mode===mode));
+  if(mode==="desktop") document.body.classList.add("mode-desktop-forced");
+  else if(mode==="mobile") document.body.classList.add("mode-mobile");
+  else document.body.classList.add("mode-auto");
+}
+$$(".view-toggle button").forEach(b=>b.addEventListener("click", ()=>setMode(b.dataset.mode)));
+</script>
+</body>
+</html>
