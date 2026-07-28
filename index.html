@@ -371,7 +371,7 @@ import {
   getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, orderBy,
+  getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, collection, query, where, orderBy,
   onSnapshot, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -678,6 +678,9 @@ async function renderView(){
   if(currentView === "dashboard"){ main.innerHTML = viewDashboard(); loadJadwalSholat(); return; }
   if(currentView === "user"){ main.innerHTML = "<div class='topbar'><div><p class='eyebrow'>Administrasi Sistem</p><h1>Kelola User</h1></div></div><div id='user-panel'></div>"; renderUserManagement(); return; }
   if(currentView === "keuangan"){ initKeuanganView(); return; }
+  if(currentView === "jamaah"){ initJamaahView(); return; }
+  if(currentView === "kegiatan"){ initKegiatanView(); return; }
+  if(currentView === "pengumuman"){ initPengumumanView(); return; }
   main.innerHTML = placeholderModule(ALL_MENUS.find(m=>m.id===currentView)?.label || currentView);
 }
 
@@ -971,6 +974,223 @@ function openSetoranModal(unitId){
   });
 }
 window.__closeModal = closeModal;
+
+/* ================= JAMAAH MODULE ================= */
+let jamaahList = [];
+let jamaahUnsub = null;
+let jamaahSearch = "";
+function canEditJamaah(){
+  const r = currentUserDoc.roles||[];
+  return r.includes("godmode")||r.includes("admin")||r.includes("sekretaris")||r.includes("ketua");
+}
+function initJamaahView(){
+  const main = $("#main-content");
+  main.innerHTML = `
+    <div class="topbar">
+      <div><p class="eyebrow">Data Warga</p><h1>Data Jamaah</h1><p class="desc" id="jamaah-count">Memuat…</p></div>
+      ${canEditJamaah() ? `<button class="btn btn-gold" id="btn-add-jamaah">+ Tambah Jamaah</button>` : ``}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Daftar Jamaah</h3>
+        <input type="text" id="jamaah-search-input" placeholder="Cari nama / RT-RW…" style="padding:9px 13px;border:1.5px solid var(--line);border-radius:9px;font-size:14px;width:220px;max-width:100%;">
+      </div>
+      <div id="jamaah-table-wrap"><div class="empty-state"><p>Memuat…</p></div></div>
+    </div>
+  `;
+  $("#btn-add-jamaah")?.addEventListener("click", ()=>openJamaahModal());
+  $("#jamaah-search-input").addEventListener("input", (e)=>{ jamaahSearch=e.target.value.toLowerCase(); renderJamaahTable(); });
+  if(jamaahUnsub) jamaahUnsub();
+  jamaahUnsub = onSnapshot(query(collection(db,"jamaah"), orderBy("nama","asc")), (snap)=>{
+    jamaahList = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    $("#jamaah-count").textContent = jamaahList.length + " jamaah terdata";
+    renderJamaahTable();
+  });
+}
+function renderJamaahTable(){
+  const wrap = $("#jamaah-table-wrap");
+  if(!wrap) return;
+  const filtered = jamaahList.filter(j =>
+    (j.nama||"").toLowerCase().includes(jamaahSearch) || (j.rtrw||"").toLowerCase().includes(jamaahSearch));
+  if(filtered.length===0){ wrap.innerHTML = emptyState("Belum ada data jamaah","Tambahkan data jamaah pertama."); return; }
+  wrap.innerHTML = `<div class="table-scroll"><table>
+    <thead><tr><th>Nama</th><th>No. HP</th><th>RT/RW</th><th>Alamat</th>${canEditJamaah()?'<th></th>':''}</tr></thead>
+    <tbody>${filtered.map(j=>`<tr>
+      <td>${j.nama}</td><td>${j.hp||"-"}</td><td>${j.rtrw||"-"}</td><td>${j.alamat||"-"}</td>
+      ${canEditJamaah()?`<td style="white-space:nowrap;">
+        <button class="btn btn-ghost btn-sm" data-edit-jm="${j.id}">Edit</button>
+        <button class="btn btn-danger btn-sm" data-del-jm="${j.id}">Hapus</button>
+      </td>`:''}
+    </tr>`).join("")}</tbody>
+  </table></div>`;
+  $$('[data-edit-jm]').forEach(b=>b.addEventListener("click", ()=>openJamaahModal(b.dataset.editJm)));
+  $$('[data-del-jm]').forEach(b=>b.addEventListener("click", async ()=>{
+    if(!confirm("Hapus data jamaah ini?")) return;
+    try{ await deleteDoc(doc(db,"jamaah",b.dataset.delJm)); toast("Data jamaah dihapus."); }
+    catch(e){ console.error(e); toast("Gagal menghapus.", true); }
+  }));
+}
+function openJamaahModal(id){
+  const j = id ? jamaahList.find(x=>x.id===id) : null;
+  openModal(`
+    <h3>${j?"Edit":"Tambah"} Jamaah</h3>
+    <div class="field"><label>Nama Lengkap</label><input type="text" id="jm-nama" value="${j?.nama||""}" placeholder="Nama jamaah"></div>
+    <div class="field"><label>No. HP</label><input type="text" id="jm-hp" value="${j?.hp||""}" placeholder="08xxxxxxxxxx"></div>
+    <div class="field"><label>RT/RW</label><input type="text" id="jm-rtrw" value="${j?.rtrw||""}" placeholder="RT 01/RW 02"></div>
+    <div class="field"><label>Alamat</label><textarea id="jm-alamat" rows="2" placeholder="Alamat lengkap">${j?.alamat||""}</textarea></div>
+    <p class="form-error" id="jm-error"></p>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="window.__closeModal()">Batal</button><button class="btn btn-primary" id="btn-save-jamaah">Simpan</button></div>
+  `);
+  $("#btn-save-jamaah").addEventListener("click", async ()=>{
+    const errEl = $("#jm-error"); errEl.style.display="none";
+    const nama = $("#jm-nama").value.trim();
+    if(!nama){ errEl.textContent="Nama wajib diisi."; errEl.style.display="block"; return; }
+    const data = { nama, hp:$("#jm-hp").value.trim(), rtrw:$("#jm-rtrw").value.trim(), alamat:$("#jm-alamat").value.trim() };
+    try{
+      if(j) await updateDoc(doc(db,"jamaah",j.id), data);
+      else await addDoc(collection(db,"jamaah"), {...data, createdAt:serverTimestamp(), createdBy:currentUser.uid});
+      closeModal(); toast("Data jamaah tersimpan.");
+    }catch(e){ console.error(e); errEl.textContent="Gagal menyimpan."; errEl.style.display="block"; }
+  });
+}
+
+/* ================= KEGIATAN MODULE ================= */
+let kegiatanList = [];
+let kegiatanUnsub = null;
+function canEditKegiatan(){
+  const r = currentUserDoc.roles||[];
+  return r.includes("godmode")||r.includes("admin")||r.includes("sekretaris")||r.includes("ketua")||r.includes("seksi");
+}
+function initKegiatanView(){
+  const main = $("#main-content");
+  main.innerHTML = `
+    <div class="topbar">
+      <div><p class="eyebrow">Agenda</p><h1>Kegiatan</h1><p class="desc">Pengajian &amp; agenda masjid</p></div>
+      ${canEditKegiatan() ? `<button class="btn btn-gold" id="btn-add-kegiatan">+ Tambah Kegiatan</button>` : ``}
+    </div>
+    <div class="panel"><div class="panel-head"><h3>Semua Kegiatan</h3></div><div id="kegiatan-list"><div class="empty-state"><p>Memuat…</p></div></div></div>
+  `;
+  $("#btn-add-kegiatan")?.addEventListener("click", ()=>openKegiatanModal());
+  if(kegiatanUnsub) kegiatanUnsub();
+  kegiatanUnsub = onSnapshot(query(collection(db,"kegiatan"), orderBy("tanggal","asc")), (snap)=>{
+    kegiatanList = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderKegiatanList();
+  });
+}
+function fmtTanggalID(iso){
+  if(!iso) return "-";
+  return new Date(iso+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"});
+}
+function renderKegiatanList(){
+  const el = $("#kegiatan-list");
+  if(!el) return;
+  if(kegiatanList.length===0){ el.innerHTML = emptyState("Belum ada kegiatan","Tambahkan agenda pengajian atau kegiatan lainnya."); return; }
+  el.innerHTML = kegiatanList.map(k=>`
+    <div class="announcement">
+      <div class="a-date">${fmtTanggalID(k.tanggal)}${k.waktu?" · "+k.waktu:""}</div>
+      <div class="a-title">${k.nama}</div>
+      <div class="a-body">📍 ${k.lokasi||"-"}${k.deskripsi?" — "+k.deskripsi:""}</div>
+      ${canEditKegiatan()?`<div style="margin-top:8px;"><button class="btn btn-ghost btn-sm" data-edit-kg="${k.id}">Edit</button> <button class="btn btn-danger btn-sm" data-del-kg="${k.id}">Hapus</button></div>`:``}
+    </div>
+  `).join("");
+  $$('[data-edit-kg]').forEach(b=>b.addEventListener("click", ()=>openKegiatanModal(b.dataset.editKg)));
+  $$('[data-del-kg]').forEach(b=>b.addEventListener("click", async ()=>{
+    if(!confirm("Hapus kegiatan ini?")) return;
+    try{ await deleteDoc(doc(db,"kegiatan",b.dataset.delKg)); toast("Kegiatan dihapus."); }
+    catch(e){ console.error(e); toast("Gagal menghapus.", true); }
+  }));
+}
+function openKegiatanModal(id){
+  const k = id ? kegiatanList.find(x=>x.id===id) : null;
+  openModal(`
+    <h3>${k?"Edit":"Tambah"} Kegiatan</h3>
+    <div class="field"><label>Nama Kegiatan</label><input type="text" id="kg-nama" value="${k?.nama||""}" placeholder="Pengajian Rutin"></div>
+    <div class="field"><label>Tanggal</label><input type="date" id="kg-tanggal" value="${k?.tanggal||""}"></div>
+    <div class="field"><label>Waktu</label><input type="time" id="kg-waktu" value="${k?.waktu||""}"></div>
+    <div class="field"><label>Lokasi</label><input type="text" id="kg-lokasi" value="${k?.lokasi||""}" placeholder="Aula Masjid"></div>
+    <div class="field"><label>Deskripsi (opsional)</label><textarea id="kg-deskripsi" rows="2">${k?.deskripsi||""}</textarea></div>
+    <p class="form-error" id="kg-error"></p>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="window.__closeModal()">Batal</button><button class="btn btn-primary" id="btn-save-kegiatan">Simpan</button></div>
+  `);
+  $("#btn-save-kegiatan").addEventListener("click", async ()=>{
+    const errEl = $("#kg-error"); errEl.style.display="none";
+    const nama = $("#kg-nama").value.trim();
+    const tanggal = $("#kg-tanggal").value;
+    if(!nama || !tanggal){ errEl.textContent="Nama dan tanggal wajib diisi."; errEl.style.display="block"; return; }
+    const data = { nama, tanggal, waktu:$("#kg-waktu").value, lokasi:$("#kg-lokasi").value.trim(), deskripsi:$("#kg-deskripsi").value.trim() };
+    try{
+      if(k) await updateDoc(doc(db,"kegiatan",k.id), data);
+      else await addDoc(collection(db,"kegiatan"), {...data, createdAt:serverTimestamp(), createdBy:currentUser.uid});
+      closeModal(); toast("Kegiatan tersimpan.");
+    }catch(e){ console.error(e); errEl.textContent="Gagal menyimpan."; errEl.style.display="block"; }
+  });
+}
+
+/* ================= PENGUMUMAN MODULE ================= */
+let pengumumanList = [];
+let pengumumanUnsub = null;
+function canEditPengumuman(){
+  const r = currentUserDoc.roles||[];
+  return r.includes("godmode")||r.includes("admin")||r.includes("sekretaris")||r.includes("ketua");
+}
+function initPengumumanView(){
+  const main = $("#main-content");
+  main.innerHTML = `
+    <div class="topbar">
+      <div><p class="eyebrow">Papan Info</p><h1>Pengumuman</h1><p class="desc">Info penting untuk seluruh jamaah</p></div>
+      ${canEditPengumuman() ? `<button class="btn btn-gold" id="btn-add-pengumuman">+ Buat Pengumuman</button>` : ``}
+    </div>
+    <div class="panel" id="pengumuman-list"><div class="empty-state"><p>Memuat…</p></div></div>
+  `;
+  $("#btn-add-pengumuman")?.addEventListener("click", ()=>openPengumumanModal());
+  if(pengumumanUnsub) pengumumanUnsub();
+  pengumumanUnsub = onSnapshot(query(collection(db,"pengumuman"), orderBy("tanggal","desc")), (snap)=>{
+    pengumumanList = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderPengumumanList();
+  });
+}
+function renderPengumumanList(){
+  const el = $("#pengumuman-list");
+  if(!el) return;
+  if(pengumumanList.length===0){ el.innerHTML = emptyState("Belum ada pengumuman","Buat pengumuman pertama untuk jamaah."); return; }
+  el.innerHTML = pengumumanList.map(p=>`
+    <div class="announcement">
+      <div class="a-date">${fmtTanggalID(p.tanggal)}</div>
+      <div class="a-title">${p.judul}</div>
+      <div class="a-body">${p.isi}</div>
+      ${canEditPengumuman()?`<div style="margin-top:8px;"><button class="btn btn-ghost btn-sm" data-edit-pg="${p.id}">Edit</button> <button class="btn btn-danger btn-sm" data-del-pg="${p.id}">Hapus</button></div>`:``}
+    </div>
+  `).join("");
+  $$('[data-edit-pg]').forEach(b=>b.addEventListener("click", ()=>openPengumumanModal(b.dataset.editPg)));
+  $$('[data-del-pg]').forEach(b=>b.addEventListener("click", async ()=>{
+    if(!confirm("Hapus pengumuman ini?")) return;
+    try{ await deleteDoc(doc(db,"pengumuman",b.dataset.delPg)); toast("Pengumuman dihapus."); }
+    catch(e){ console.error(e); toast("Gagal menghapus.", true); }
+  }));
+}
+function openPengumumanModal(id){
+  const p = id ? pengumumanList.find(x=>x.id===id) : null;
+  openModal(`
+    <h3>${p?"Edit":"Buat"} Pengumuman</h3>
+    <div class="field"><label>Judul</label><input type="text" id="pg-judul" value="${p?.judul||""}" placeholder="Judul pengumuman"></div>
+    <div class="field"><label>Tanggal</label><input type="date" id="pg-tanggal" value="${p?.tanggal||new Date().toISOString().slice(0,10)}"></div>
+    <div class="field"><label>Isi</label><textarea id="pg-isi" rows="4" placeholder="Isi pengumuman">${p?.isi||""}</textarea></div>
+    <p class="form-error" id="pg-error"></p>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="window.__closeModal()">Batal</button><button class="btn btn-primary" id="btn-save-pengumuman">Simpan</button></div>
+  `);
+  $("#btn-save-pengumuman").addEventListener("click", async ()=>{
+    const errEl = $("#pg-error"); errEl.style.display="none";
+    const judul = $("#pg-judul").value.trim();
+    const isi = $("#pg-isi").value.trim();
+    const tanggal = $("#pg-tanggal").value;
+    if(!judul || !isi || !tanggal){ errEl.textContent="Judul, isi, dan tanggal wajib diisi."; errEl.style.display="block"; return; }
+    const data = { judul, isi, tanggal };
+    try{
+      if(p) await updateDoc(doc(db,"pengumuman",p.id), data);
+      else await addDoc(collection(db,"pengumuman"), {...data, createdAt:serverTimestamp(), createdBy:currentUser.uid});
+      closeModal(); toast("Pengumuman tersimpan.");
+    }catch(e){ console.error(e); errEl.textContent="Gagal menyimpan."; errEl.style.display="block"; }
+  });
+}
 
 function viewDashboard(){
   return `
