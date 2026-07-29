@@ -1641,39 +1641,96 @@ function printPengajuanPDF(p){
   const steps = p.approverRoles||[];
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF();
-  pdf.setFontSize(15); pdf.setTextColor(10,46,42);
-  pdf.text("MASJID MUQODDIMATUL HIDAYAH", 105, 18, {align:"center"});
-  pdf.setFontSize(10); pdf.setTextColor(90,109,106);
-  pdf.text("Dokumen Pengajuan", 105, 25, {align:"center"});
-  pdf.setDrawColor(15,76,70); pdf.setLineWidth(0.6); pdf.line(14,29,196,29);
-  pdf.setFontSize(13); pdf.setTextColor(15,76,70);
-  pdf.text(p.judul, 14, 40);
-  pdf.setFontSize(9.5); pdf.setTextColor(60,77,74);
-  const metaLines = [
-    `Kategori: ${p.kategoriNama||labelJenisPengajuan(p.jenis)}`,
-    `Diajukan oleh: ${p.pemohonNama}`,
-    p.jumlah ? `Jumlah: ${fmtRp(p.jumlah)}` : null,
-    `Deskripsi: ${p.deskripsi||"-"}`,
-    `Status akhir: ${p.status==='disetujui'?'Disetujui':(p.status==='ditolak'?'Ditolak':'Dalam Proses')}`,
-    `Urutan Approval: ${steps.map(s=>ROLE_LABEL[s]||s).join(" -> ")}`
-  ].filter(Boolean);
-  let y = 48;
-  metaLines.forEach(line=>{ pdf.text(line, 14, y); y += 6; });
+  const TEAL = [15,76,70], TEAL_DARK = [10,46,42], GOLD = [201,162,39], INK = [22,34,31], MUTED = [90,109,106];
+  const statusInfo = p.status==='disetujui' ? {label:"DISETUJUI", color:[47,107,63], bg:[231,242,233]}
+    : p.status==='ditolak' ? {label:"DITOLAK", color:[180,68,46], bg:[247,233,229]}
+    : {label:"DALAM PROSES", color:[154,116,21], bg:[251,241,220]};
+
+  // ---- Header band ----
+  pdf.setFillColor(...TEAL_DARK);
+  pdf.rect(0,0,210,32,"F");
+  pdf.setFillColor(...GOLD);
+  pdf.rect(0,32,210,1.4,"F");
+  pdf.setFontSize(16); pdf.setTextColor(255,255,255);
+  pdf.text("MASJID MUQODDIMATUL HIDAYAH", 105, 15, {align:"center"});
+  pdf.setFontSize(9.5); pdf.setTextColor(217,186,83);
+  pdf.text("DOKUMEN PENGAJUAN", 105, 23, {align:"center"});
+
+  // ---- Title ----
+  let y = 46;
+  pdf.setFontSize(17); pdf.setTextColor(...TEAL_DARK);
+  const titleWrapped = pdf.splitTextToSize(p.judul, 140);
+  pdf.text(titleWrapped, 14, y);
+  y += 7*titleWrapped.length;
+
+  // ---- Status badge ----
+  const badgeW = pdf.getTextWidth(statusInfo.label)+14;
+  pdf.setFillColor(...statusInfo.bg);
+  pdf.roundedRect(196-badgeW, 40, badgeW, 9, 4, 4, "F");
+  pdf.setFontSize(9); pdf.setTextColor(...statusInfo.color);
+  pdf.text(statusInfo.label, 196-badgeW/2, 46, {align:"center"});
+
   y += 4;
-  pdf.setFontSize(11); pdf.setTextColor(15,76,70);
-  pdf.text("Riwayat Proses", 14, y); y += 7;
-  pdf.setFontSize(9); pdf.setTextColor(22,34,31);
-  const history = p.history||[];
-  if(history.length===0){ pdf.text("Belum ada riwayat.", 14, y); y += 6; }
-  history.forEach((h,i)=>{
-    const label = h.action==='approve'?'Disetujui':(h.action==='reject'?'Ditolak':'Diajukan');
-    const line = `${i+1}. ${label} oleh ${h.byName||'-'}${h.note?(' — '+h.note):''} (${new Date(h.at).toLocaleString('id-ID')})`;
-    const wrapped = pdf.splitTextToSize(line, 180);
-    pdf.text(wrapped, 14, y);
-    y += 6*wrapped.length;
+  // ---- Info card ----
+  const cardY = y;
+  pdf.setDrawColor(220,228,225); pdf.setFillColor(247,249,248);
+  const infoRows = [
+    ["Kategori", p.kategoriNama||labelJenisPengajuan(p.jenis)],
+    ["Diajukan oleh", p.pemohonNama],
+    p.jumlah ? ["Jumlah", fmtRp(p.jumlah)] : null,
+    ["Urutan Approval", steps.map(s=>ROLE_LABEL[s]||s).join("  →  ")],
+  ].filter(Boolean);
+  const rowH = 8;
+  const cardH = infoRows.length*rowH + 10;
+  pdf.roundedRect(14, cardY, 182, cardH, 3, 3, "FD");
+  let iy = cardY + 9;
+  infoRows.forEach(([label,val])=>{
+    pdf.setFontSize(8); pdf.setTextColor(...MUTED);
+    pdf.text(label.toUpperCase(), 20, iy);
+    pdf.setFontSize(10); pdf.setTextColor(...INK);
+    const wrapped = pdf.splitTextToSize(String(val), 120);
+    pdf.text(wrapped, 70, iy);
+    iy += rowH;
   });
-  pdf.setFontSize(8); pdf.setTextColor(138,152,149);
-  pdf.text("Dicetak otomatis oleh Aplikasi Masjid Muqoddimatul Hidayah", 105, 285, {align:"center"});
+  y = cardY + cardH + 8;
+
+  // ---- Deskripsi ----
+  pdf.setFontSize(9.5); pdf.setTextColor(...TEAL);
+  pdf.text("DESKRIPSI", 14, y); y += 5;
+  pdf.setFontSize(9.5); pdf.setTextColor(...INK);
+  const descWrapped = pdf.splitTextToSize(p.deskripsi||"-", 182);
+  pdf.text(descWrapped, 14, y);
+  y += 6*descWrapped.length + 6;
+
+  // ---- Riwayat Proses ----
+  pdf.setFontSize(11); pdf.setTextColor(...TEAL_DARK);
+  pdf.text("Riwayat Proses", 14, y); y += 2;
+  const history = p.history||[];
+  if(history.length===0){
+    pdf.setFontSize(9); pdf.setTextColor(...MUTED);
+    pdf.text("Belum ada riwayat.", 14, y+6);
+  } else {
+    pdf.autoTable({
+      startY: y+4,
+      head: [["No","Aksi","Oleh","Catatan","Waktu"]],
+      body: history.map((h,i)=>[
+        i+1,
+        h.action==='approve'?'Disetujui':(h.action==='reject'?'Ditolak':(h.action==='revisi'?'Revisi':'Diajukan')),
+        h.byName||'-',
+        h.note||'-',
+        new Date(h.at).toLocaleString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})
+      ]),
+      headStyles: { fillColor: TEAL, textColor: 255, fontSize: 8.5 },
+      styles: { fontSize: 8.5, textColor: INK, cellPadding: 3 },
+      alternateRowStyles: { fillColor: [245,248,247] },
+      columnStyles: { 0: {cellWidth:8} },
+      margin: { left: 14, right: 14 },
+    });
+  }
+
+  // ---- Footer ----
+  pdf.setFontSize(8); pdf.setTextColor(...MUTED);
+  pdf.text("Dicetak otomatis oleh Aplikasi Masjid Muqoddimatul Hidayah", 105, 290, {align:"center"});
   pdf.save(`Pengajuan_${p.judul.replace(/[^a-z0-9]+/gi,'-')}.pdf`);
 }
 
