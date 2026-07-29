@@ -1983,7 +1983,7 @@ function renderAsetList(){
 }
 function qrUrlFor(a){
   const text = `Aset: ${a.nama}\nNo: ${a.nomorAset||'-'}\nLokasi: ${a.lokasi||'-'}\nKondisi: ${a.kondisi}\nMasjid Muqoddimatul Hidayah`;
-  return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(text)}`;
+  return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(text)}`;
 }
 function imgUrlToDataURL(url){
   return fetch(url).then(r=>r.blob()).then(blob=>new Promise((resolve,reject)=>{
@@ -2002,9 +2002,9 @@ async function printAsetLabelGrid(items){
   const marginX = 10, marginY = 10, cols = 2, rows = 5;
   const cellW = (210 - marginX*2) / cols;
   const cellH = (297 - marginY*2) / rows;
+  const qrSize = Math.min(cellH - 8, 40);
   for(let i=0;i<items.length;i++){
     const a = items[i];
-    const pageIndex = Math.floor(i / (cols*rows));
     const posInPage = i % (cols*rows);
     const col = posInPage % cols;
     const row = Math.floor(posInPage / cols);
@@ -2014,18 +2014,23 @@ async function printAsetLabelGrid(items){
     pdf.setDrawColor(180,180,180); pdf.setLineDashPattern([1,1],0);
     pdf.rect(x+1, y+1, cellW-2, cellH-2);
     pdf.setLineDashPattern([],0);
+    const qrX = x+4, qrY = y + (cellH-qrSize)/2;
     try{
       const dataUrl = await imgUrlToDataURL(qrUrlFor(a));
-      pdf.addImage(dataUrl, "PNG", x+3, y+cellH/2-10, 18, 18);
+      pdf.addImage(dataUrl, "PNG", qrX, qrY, qrSize, qrSize);
     }catch(e){ console.error("QR gagal dimuat", e); }
-    pdf.setFontSize(6.5); pdf.setTextColor(201,162,39);
-    pdf.text("MASJID MUQODDIMATUL HIDAYAH", x+24, y+8, {maxWidth: cellW-27});
-    pdf.setFontSize(10); pdf.setTextColor(10,46,42);
-    pdf.text(a.nama||"-", x+24, y+14, {maxWidth: cellW-27});
-    pdf.setFontSize(11); pdf.setTextColor(15,76,70);
-    pdf.text(a.nomorAset||"-", x+24, y+20);
-    pdf.setFontSize(7.5); pdf.setTextColor(90,109,106);
-    pdf.text(a.lokasi||"-", x+24, y+25, {maxWidth: cellW-27});
+    const textX = qrX + qrSize + 5;
+    const textW = cellW - qrSize - 12;
+    const textCenterY = y + cellH/2;
+    pdf.setFontSize(7); pdf.setTextColor(201,162,39);
+    pdf.text("MASJID MUQODDIMATUL HIDAYAH", textX, textCenterY-10, {maxWidth: textW});
+    pdf.setFontSize(11); pdf.setTextColor(10,46,42);
+    const namaWrapped = pdf.splitTextToSize(a.nama||"-", textW);
+    pdf.text(namaWrapped, textX, textCenterY-3);
+    pdf.setFontSize(13); pdf.setTextColor(15,76,70);
+    pdf.text(a.nomorAset||"-", textX, textCenterY+5+ (namaWrapped.length-1)*4);
+    pdf.setFontSize(8); pdf.setTextColor(90,109,106);
+    pdf.text(a.lokasi||"-", textX, textCenterY+12+ (namaWrapped.length-1)*4, {maxWidth: textW});
   }
   pdf.save("Label-Aset-Masjid-Muqoddimatul-Hidayah.pdf");
 }
