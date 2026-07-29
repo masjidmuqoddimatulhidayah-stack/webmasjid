@@ -866,17 +866,47 @@ function updateExportBtnLabel(){
   if(!btn) return;
   btn.innerHTML = keuTab==="qurban" ? "📄 Export Laporan Arisan Qurban (PDF)" : "📄 Export Laporan PDF";
 }
+async function loadKopImageForPdf(){
+  try{
+    const snap = await getDoc(doc(db,"pengaturan","kop_surat"));
+    if(!snap.exists() || !snap.data().url) return null;
+    const dataUrl = await imgUrlToDataURL(snap.data().url);
+    const dims = await new Promise((resolve)=>{
+      const img = new Image();
+      img.onload = ()=>resolve({w:img.naturalWidth||800, h:img.naturalHeight||200});
+      img.onerror = ()=>resolve({w:800,h:200});
+      img.src = dataUrl;
+    });
+    return {dataUrl, w:dims.w, h:dims.h};
+  }catch(e){ console.error(e); return null; }
+}
+async function drawDocumentHeader(pdf, subtitle){
+  const kop = await loadKopImageForPdf();
+  if(kop){
+    const pageW = 210;
+    let imgH = pageW * (kop.h/kop.w);
+    let imgW = pageW, offsetX = 0;
+    const maxH = 45;
+    if(imgH > maxH){ const scale = maxH/imgH; imgH = maxH; imgW = pageW*scale; offsetX = (pageW-imgW)/2; }
+    pdf.addImage(kop.dataUrl, "PNG", offsetX, 0, imgW, imgH);
+    return imgH + 8;
+  } else {
+    pdf.setFillColor(10,46,42); pdf.rect(0,0,210,32,"F");
+    pdf.setFillColor(201,162,39); pdf.rect(0,32,210,1.4,"F");
+    pdf.setFontSize(16); pdf.setTextColor(255,255,255);
+    pdf.text("MASJID MUQODDIMATUL HIDAYAH", 105, 15, {align:"center"});
+    pdf.setFontSize(9.5); pdf.setTextColor(217,186,83);
+    pdf.text(subtitle, 105, 23, {align:"center"});
+    return 40;
+  }
+}
 async function exportQurbanPDF(){
   if(qurbanUnits.length===0){ toast("Belum ada data Arisan Qurban.", true); return; }
   toast("Menyiapkan PDF…");
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF();
-  pdf.setFontSize(15); pdf.setTextColor(10,46,42);
-  pdf.text("MASJID MUQODDIMATUL HIDAYAH", 105, 18, {align:"center"});
-  pdf.setFontSize(10); pdf.setTextColor(90,109,106);
-  pdf.text("Laporan Arisan Qurban", 105, 25, {align:"center"});
-  pdf.setDrawColor(15,76,70); pdf.setLineWidth(0.6); pdf.line(14,29,196,29);
-  let y = 38;
+  let y = await drawDocumentHeader(pdf, "LAPORAN ARISAN QURBAN");
+  y += 4;
   for(const q of qurbanUnits){
     const pct = q.target ? Math.min(100, Math.round((q.terkumpul||0)/q.target*100)) : 0;
     const perOrang = q.peserta ? Math.round(q.target/q.peserta) : 0;
@@ -909,32 +939,30 @@ async function exportQurbanPDF(){
   pdf.text("Dicetak otomatis oleh Aplikasi Masjid Muqoddimatul Hidayah", 105, 290, {align:"center"});
   pdf.save(`Laporan-Arisan-Qurban.pdf`);
 }
-function exportLaporanKeuanganPDF(){
+async function exportLaporanKeuanganPDF(){
   const data = filteredTransaksi();
   let masuk=0, keluar=0;
   data.forEach(t=>{ if(t.jenis==="masuk") masuk+=Number(t.jumlah||0); else keluar+=Number(t.jumlah||0); });
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF();
-  pdf.setFontSize(15); pdf.setTextColor(10,46,42);
-  pdf.text("MASJID MUQODDIMATUL HIDAYAH", 105, 18, {align:"center"});
-  pdf.setFontSize(10); pdf.setTextColor(90,109,106);
-  pdf.text("Laporan Keuangan", 105, 25, {align:"center"});
-  pdf.setDrawColor(15,76,70); pdf.setLineWidth(0.6); pdf.line(14,29,196,29);
+  let y = await drawDocumentHeader(pdf, "LAPORAN KEUANGAN");
+  y += 5;
   pdf.setFontSize(9); pdf.setTextColor(90,109,106);
-  pdf.text(`Periode: ${keuFilterDari} s/d ${keuFilterSampai}`, 14, 37);
+  pdf.text(`Periode: ${keuFilterDari} s/d ${keuFilterSampai}`, 14, y); y += 7;
   pdf.setFontSize(9);
-  pdf.text(`Pemasukan: ${fmtRp(masuk)}`, 14, 44);
-  pdf.text(`Pengeluaran: ${fmtRp(keluar)}`, 80, 44);
-  pdf.text(`Saldo: ${fmtRp(masuk-keluar)}`, 150, 44);
+  pdf.text(`Pemasukan: ${fmtRp(masuk)}`, 14, y);
+  pdf.text(`Pengeluaran: ${fmtRp(keluar)}`, 80, y);
+  pdf.text(`Saldo: ${fmtRp(masuk-keluar)}`, 150, y);
+  y += 6;
   pdf.autoTable({
-    startY: 50,
+    startY: y,
     head: [["Tanggal","Jenis","Kategori","Nama","Jumlah"]],
     body: data.map(t=>[t.tanggal, t.jenis==='masuk'?'Masuk':'Keluar', labelKategori(t.kategori), t.nama||"-", fmtRp(t.jumlah)]),
     headStyles: { fillColor: [15,76,70], textColor: 255, fontSize: 8.5 },
     styles: { fontSize: 8.5, textColor: [22,34,31] },
     alternateRowStyles: { fillColor: [245,248,247] },
   });
-  const finalY = pdf.lastAutoTable.finalY || 60;
+  const finalY = pdf.lastAutoTable.finalY || (y+10);
   pdf.setFontSize(8); pdf.setTextColor(138,152,149);
   pdf.text("Dicetak otomatis oleh Aplikasi Masjid Muqoddimatul Hidayah", 105, finalY+12, {align:"center"});
   pdf.save(`Laporan-Keuangan_${keuFilterDari}_sd_${keuFilterSampai}.pdf`);
@@ -1636,7 +1664,7 @@ async function actPengajuan(id, action){
     toast(action==="approve"?"Pengajuan disetujui.":"Pengajuan ditolak.");
   }catch(e){ console.error(e); toast("Gagal memproses pengajuan.", true); }
 }
-function printPengajuanPDF(p){
+async function printPengajuanPDF(p){
   if(!p) return;
   const steps = p.approverRoles||[];
   const { jsPDF } = window.jspdf;
@@ -1646,30 +1674,23 @@ function printPengajuanPDF(p){
     : p.status==='ditolak' ? {label:"DITOLAK", color:[180,68,46], bg:[247,233,229]}
     : {label:"DALAM PROSES", color:[154,116,21], bg:[251,241,220]};
 
-  // ---- Header band ----
-  pdf.setFillColor(...TEAL_DARK);
-  pdf.rect(0,0,210,32,"F");
-  pdf.setFillColor(...GOLD);
-  pdf.rect(0,32,210,1.4,"F");
-  pdf.setFontSize(16); pdf.setTextColor(255,255,255);
-  pdf.text("MASJID MUQODDIMATUL HIDAYAH", 105, 15, {align:"center"});
-  pdf.setFontSize(9.5); pdf.setTextColor(217,186,83);
-  pdf.text("DOKUMEN PENGAJUAN", 105, 23, {align:"center"});
+  // ---- Header (pakai kop surat kalau ada) ----
+  const headerEndY = await drawDocumentHeader(pdf, "DOKUMEN PENGAJUAN");
 
   // ---- Title ----
-  let y = 46;
+  let y = headerEndY + 8;
   pdf.setFontSize(17); pdf.setTextColor(...TEAL_DARK);
   const titleWrapped = pdf.splitTextToSize(p.judul, 140);
   pdf.text(titleWrapped, 14, y);
-  y += 7*titleWrapped.length;
 
   // ---- Status badge ----
   const badgeW = pdf.getTextWidth(statusInfo.label)+14;
   pdf.setFillColor(...statusInfo.bg);
-  pdf.roundedRect(196-badgeW, 40, badgeW, 9, 4, 4, "F");
+  pdf.roundedRect(196-badgeW, headerEndY+2, badgeW, 9, 4, 4, "F");
   pdf.setFontSize(9); pdf.setTextColor(...statusInfo.color);
-  pdf.text(statusInfo.label, 196-badgeW/2, 46, {align:"center"});
+  pdf.text(statusInfo.label, 196-badgeW/2, headerEndY+8, {align:"center"});
 
+  y += 7*titleWrapped.length;
   y += 4;
   // ---- Info card ----
   const cardY = y;
@@ -1855,6 +1876,7 @@ function canEditSurat(){
 function romawiBulan(m){
   return ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"][m-1];
 }
+let kopSuratUrl = "";
 function initSuratView(){
   const main = $("#main-content");
   main.innerHTML = `
@@ -1862,18 +1884,80 @@ function initSuratView(){
       <div><p class="eyebrow">Administrasi</p><h1>Surat Menyurat</h1><p class="desc">Kop surat resmi &amp; penomoran otomatis</p></div>
       ${canEditSurat() ? `<button class="btn btn-gold" id="btn-add-surat">+ Buat Surat</button>` : ``}
     </div>
-    <div class="kop">
-      <h4>MASJID MUQODDIMATUL HIDAYAH</h4>
-      <p>Sekretariat Dewan Kemakmuran Masjid (DKM)</p>
-      <hr>
+    <div class="kop" id="kop-display" style="padding:0; overflow:hidden;">
+      <div class="empty-state" style="padding:24px;"><p>Memuat kop surat…</p></div>
     </div>
+    ${canEditSurat() ? `<div style="margin:-8px 0 18px;"><button class="btn btn-ghost btn-sm" id="btn-ubah-kop">🖼️ Ubah Kop Surat (Upload Gambar)</button></div>` : ``}
     <div class="panel"><div class="panel-head"><h3>Daftar Surat</h3></div><div id="surat-list"><div class="empty-state"><p>Memuat…</p></div></div></div>
   `;
   $("#btn-add-surat")?.addEventListener("click", ()=>openSuratModal());
+  $("#btn-ubah-kop")?.addEventListener("click", openKopSuratModal);
+  loadKopSurat();
   if(suratUnsub) suratUnsub();
   suratUnsub = onSnapshot(query(collection(db,"surat"), orderBy("createdAtSort","desc")), (snap)=>{
     suratList = snap.docs.map(d=>({id:d.id, ...d.data()}));
     renderSuratList();
+  });
+}
+async function loadKopSurat(){
+  try{
+    const snap = await getDoc(doc(db,"pengaturan","kop_surat"));
+    kopSuratUrl = snap.exists() ? (snap.data().url||"") : "";
+  }catch(e){ console.error(e); kopSuratUrl = ""; }
+  renderKopDisplay();
+}
+function renderKopDisplay(){
+  const el = $("#kop-display");
+  if(!el) return;
+  if(kopSuratUrl){
+    el.innerHTML = `<img src="${kopSuratUrl}" style="display:block; width:100%; height:auto;">`;
+  } else {
+    el.innerHTML = `
+      <div style="padding:20px; text-align:center;">
+        <h4 style="margin:0;">MASJID MUQODDIMATUL HIDAYAH</h4>
+        <p style="margin:2px 0 0;">Sekretariat Dewan Kemakmuran Masjid (DKM)</p>
+        <hr style="border:none; border-top:2px solid var(--teal-900); margin-top:10px;">
+      </div>`;
+  }
+}
+let kopUploadUrl = "";
+function openKopSuratModal(){
+  kopUploadUrl = kopSuratUrl;
+  openModal(`
+    <h3>Ubah Kop Surat</h3>
+    <p style="font-size:12px; color:#8A9895; margin-bottom:14px;">Unggah gambar kop surat (logo + nama masjid). Saat surat dicetak nanti, gambar ini akan ditempatkan mepet ke tepi atas kertas tanpa margin.</p>
+    <div id="kop-modal-preview" style="border:1.5px dashed var(--line); border-radius:10px; padding:10px; margin-bottom:14px; text-align:center;">
+      ${kopUploadUrl?`<img src="${kopUploadUrl}" style="max-width:100%;">`:`<p style="font-size:12px; color:#8A9895; margin:20px 0;">Belum ada gambar</p>`}
+    </div>
+    <input type="file" id="kop-file-input" accept="image/*" style="display:none;">
+    <button class="btn btn-ghost btn-block" id="btn-pick-kop-file" type="button">Pilih Gambar</button>
+    <p class="form-error" id="kop-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="window.__closeModal()">Batal</button>
+      <button class="btn btn-primary" id="btn-save-kop">Simpan Kop Surat</button>
+    </div>
+  `);
+  $("#btn-pick-kop-file").addEventListener("click", ()=>$("#kop-file-input").click());
+  $("#kop-file-input").addEventListener("change", async (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    $("#kop-modal-preview").innerHTML = `<p style="font-size:12px; color:#8A9895; margin:20px 0;">Mengunggah…</p>`;
+    try{
+      const fd = new FormData(); fd.append("file",file); fd.append("upload_preset",CLOUDINARY_UPLOAD_PRESET);
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {method:"POST", body:fd});
+      const data = await res.json();
+      if(data.secure_url){ kopUploadUrl = data.secure_url; $("#kop-modal-preview").innerHTML = `<img src="${kopUploadUrl}" style="max-width:100%;">`; }
+      else throw new Error();
+    }catch(err){ $("#kop-modal-preview").innerHTML = `<p style="font-size:12px; color:var(--red-600);">Gagal unggah, coba lagi.</p>`; }
+  });
+  $("#btn-save-kop").addEventListener("click", async ()=>{
+    const errEl = $("#kop-error"); errEl.style.display="none";
+    if(!kopUploadUrl){ errEl.textContent="Unggah gambar dulu."; errEl.style.display="block"; return; }
+    try{
+      await setDoc(doc(db,"pengaturan","kop_surat"), { url: kopUploadUrl, updatedAt: serverTimestamp(), updatedBy: currentUser.uid });
+      kopSuratUrl = kopUploadUrl;
+      renderKopDisplay();
+      closeModal(); toast("Kop surat tersimpan.");
+    }catch(e){ console.error(e); errEl.textContent="Gagal menyimpan kop surat."; errEl.style.display="block"; }
   });
 }
 function renderSuratList(){
