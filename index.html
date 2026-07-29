@@ -376,7 +376,7 @@ import {
   getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, deleteDoc, collection, query, where, orderBy,
+  getFirestore, doc, getDoc, getDocs, setDoc, updateDoc, addDoc, deleteDoc, collection, query, where, orderBy,
   onSnapshot, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -749,15 +749,19 @@ function initKeuanganView(){
       <div id="keu-tab-content"><div class="empty-state"><p>Memuat…</p></div></div>
     </div>
   `;
-  $$(".tabs .tab-btn").forEach(b=>b.addEventListener("click", ()=>{ keuTab=b.dataset.tab; $$(".tabs .tab-btn").forEach(x=>x.classList.remove("active")); b.classList.add("active"); renderKeuTabContent(); }));
+  $$(".tabs .tab-btn").forEach(b=>b.addEventListener("click", ()=>{ keuTab=b.dataset.tab; $$(".tabs .tab-btn").forEach(x=>x.classList.remove("active")); b.classList.add("active"); renderKeuTabContent(); updateExportBtnLabel(); }));
   $("#btn-add-transaksi")?.addEventListener("click", openTransaksiModal);
   $("#btn-terapkan-filter").addEventListener("click", ()=>{
     keuFilterDari = $("#keu-filter-dari").value;
     keuFilterSampai = $("#keu-filter-sampai").value;
     renderKeuStats(); renderKeuTabContent();
   });
-  $("#btn-export-pdf").addEventListener("click", exportLaporanKeuanganPDF);
+  $("#btn-export-pdf").addEventListener("click", ()=>{
+    if(keuTab==="qurban") exportQurbanPDF();
+    else exportLaporanKeuanganPDF();
+  });
   keuFilterDari = monthStart; keuFilterSampai = todayStr;
+  updateExportBtnLabel();
 
   if(keuUnsub) keuUnsub();
   keuUnsub = onSnapshot(query(collection(db,"keuangan"), orderBy("tanggal","desc")), (snap)=>{
@@ -856,6 +860,54 @@ function renderTransaksiTab(el){
     try{ await deleteDoc(doc(db,"keuangan",b.dataset.delTr)); toast("Transaksi dihapus."); }
     catch(e){ console.error(e); toast("Gagal menghapus.", true); }
   }));
+}
+function updateExportBtnLabel(){
+  const btn = $("#btn-export-pdf");
+  if(!btn) return;
+  btn.innerHTML = keuTab==="qurban" ? "📄 Export Laporan Arisan Qurban (PDF)" : "📄 Export Laporan PDF";
+}
+async function exportQurbanPDF(){
+  if(qurbanUnits.length===0){ toast("Belum ada data Arisan Qurban.", true); return; }
+  toast("Menyiapkan PDF…");
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF();
+  pdf.setFontSize(15); pdf.setTextColor(10,46,42);
+  pdf.text("MASJID MUQODDIMATUL HIDAYAH", 105, 18, {align:"center"});
+  pdf.setFontSize(10); pdf.setTextColor(90,109,106);
+  pdf.text("Laporan Arisan Qurban", 105, 25, {align:"center"});
+  pdf.setDrawColor(15,76,70); pdf.setLineWidth(0.6); pdf.line(14,29,196,29);
+  let y = 38;
+  for(const q of qurbanUnits){
+    const pct = q.target ? Math.min(100, Math.round((q.terkumpul||0)/q.target*100)) : 0;
+    const perOrang = q.peserta ? Math.round(q.target/q.peserta) : 0;
+    if(y > 260){ pdf.addPage(); y = 20; }
+    pdf.setFontSize(12); pdf.setTextColor(15,76,70);
+    pdf.text(`${q.nama}  (${pct}%)`, 14, y); y += 6;
+    pdf.setFontSize(9); pdf.setTextColor(90,109,106);
+    pdf.text(`Target: ${fmtRp(q.target)}   Terkumpul: ${fmtRp(q.terkumpul||0)}   Peserta: ${q.peserta} orang (${fmtRp(perOrang)}/orang)`, 14, y); y += 6;
+
+    let setoranSnap;
+    try{ setoranSnap = await getDocs(query(collection(db,"qurban_setoran"), where("unitId","==",q.id))); }
+    catch(e){ console.error(e); setoranSnap = {docs:[]}; }
+    const setoranData = setoranSnap.docs.map(d=>d.data());
+    if(setoranData.length===0){
+      pdf.setFontSize(8.5); pdf.setTextColor(138,152,149);
+      pdf.text("Belum ada setoran.", 14, y); y += 8;
+    } else {
+      pdf.autoTable({
+        startY: y,
+        head: [["Tanggal","Peserta","Metode","Jumlah"]],
+        body: setoranData.map(s=>[s.tanggal||"-", s.pesertaNama||"-", s.metode==="cash"?"Cash":"Transfer", fmtRp(s.jumlah)]),
+        headStyles: { fillColor: [201,162,39], textColor: [10,46,42], fontSize: 8 },
+        styles: { fontSize: 8, textColor: [22,34,31] },
+        margin: { left: 14, right: 14 },
+      });
+      y = pdf.lastAutoTable.finalY + 10;
+    }
+  }
+  pdf.setFontSize(8); pdf.setTextColor(138,152,149);
+  pdf.text("Dicetak otomatis oleh Aplikasi Masjid Muqoddimatul Hidayah", 105, 290, {align:"center"});
+  pdf.save(`Laporan-Arisan-Qurban.pdf`);
 }
 function exportLaporanKeuanganPDF(){
   const data = filteredTransaksi();
