@@ -180,8 +180,12 @@
 
   .prayer-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(100px,1fr)); gap:10px;}
   body.mode-mobile .prayer-grid{grid-template-columns:repeat(3,1fr);}
-  .prayer-cell{background:var(--teal-50); border-radius:12px; padding:14px 8px; text-align:center;}
-  .prayer-cell.now{background:var(--teal-900); color:#fff;}
+  .prayer-cell{background:var(--teal-50); border-radius:12px; padding:14px 8px; text-align:center; transition:background .4s ease, color .4s ease;}
+  .prayer-cell.now{background:linear-gradient(135deg, var(--teal-700), var(--teal-900)); color:#fff; box-shadow:0 4px 14px -4px rgba(15,76,70,.5);}
+  .countdown-note{
+    margin-top:12px; text-align:center; font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:700;
+    color:var(--teal-900); background:var(--teal-50); border-radius:10px; padding:10px; letter-spacing:.02em;
+  }
   .prayer-cell .pname{font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; opacity:.85;}
   .prayer-cell .ptime{font-family:'JetBrains Mono',monospace; font-size:19px; margin-top:4px; font-weight:700;}
 
@@ -247,6 +251,29 @@
       Masuk dengan Google
     </button>
     <p class="login-note">Login memakai akun Google — aman, tanpa password baru. Setelah masuk, akun baru akan diminta memilih peran dan menunggu persetujuan pengurus (kecuali akun pertama, yang otomatis menjadi God Mode).</p>
+    <button class="btn btn-ghost btn-block" id="btn-guest-view" style="margin-top:12px;">👁️ Lihat Info Masjid Tanpa Login</button>
+  </div>
+</div>
+
+<!-- ===== GUEST (tanpa login) ===== -->
+<div id="guest-screen" hidden>
+  <div class="main" style="max-width:820px; margin:0 auto; padding:24px 16px 60px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:10px;">
+      <div>
+        <p class="topbar eyebrow" style="margin:0;">Assalamu'alaikum</p>
+        <h1 class="display" style="font-size:24px; color:var(--teal-950); margin:2px 0;">Masjid Muqoddimatul Hidayah</h1>
+      </div>
+      <button class="btn btn-primary btn-sm" id="btn-guest-to-login">Masuk / Login</button>
+    </div>
+    <div class="panel"><div class="panel-head"><h3>Jadwal Sholat Hari Ini</h3></div>
+      <div class="prayer-grid" id="guest-prayer-grid"><div class="empty-state" style="grid-column:1/-1;">Memuat jadwal…</div></div>
+      <p style="font-size:11.5px; color:#8A9895; margin-top:10px;" id="guest-jadwal-meta"></p>
+      <div class="countdown-note" id="guest-countdown"></div>
+      <div id="guest-islamic-note"></div>
+    </div>
+    <div class="panel"><div class="panel-head"><h3>Jadwal Petugas Jumat</h3></div><div id="guest-khatib-list"><div class="empty-state"><p>Memuat…</p></div></div></div>
+    <div class="panel"><div class="panel-head"><h3>Kegiatan Mendatang</h3></div><div id="guest-kegiatan-list"><div class="empty-state"><p>Memuat…</p></div></div></div>
+    <div class="panel"><div class="panel-head"><h3>Pengumuman</h3></div><div id="guest-pengumuman-list"><div class="empty-state"><p>Memuat…</p></div></div></div>
   </div>
 </div>
 
@@ -404,7 +431,7 @@ function toast(msg, isError=false){
   clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove("show"), 2600);
 }
 function showScreen(id){
-  ["loading","login-screen","rolepick-screen","pending-screen","rejected-screen","profile-screen","app-view"]
+  ["loading","login-screen","rolepick-screen","pending-screen","rejected-screen","profile-screen","app-view","guest-screen"]
     .forEach(s => { const el = $("#"+s); if(el) el.hidden = (s !== id); });
   if(id === "app-view"){ $("#app-view").style.display = "block"; } else { $("#app-view").style.display = "none"; }
 }
@@ -482,6 +509,8 @@ $("#btn-google-login").addEventListener("click", async () => {
 $("#btn-logout-pending").addEventListener("click", () => signOut(auth));
 $("#btn-logout-rejected").addEventListener("click", () => signOut(auth));
 $("#btn-logout").addEventListener("click", () => signOut(auth));
+$("#btn-guest-view").addEventListener("click", () => { showScreen("guest-screen"); loadGuestData(); });
+$("#btn-guest-to-login").addEventListener("click", () => showScreen("login-screen"));
 
 onAuthStateChanged(auth, async (user) => {
   showScreen("loading");
@@ -694,7 +723,7 @@ function placeholderModule(name){
 
 async function renderView(){
   const main = $("#main-content");
-  if(currentView === "dashboard"){ main.innerHTML = viewDashboard(); loadJadwalSholat("#dash-prayer-grid","#dash-jadwal-meta"); loadDashboardData(); startLiveClock(); renderIslamicNote(); return; }
+  if(currentView === "dashboard"){ main.innerHTML = viewDashboard(); loadJadwalSholat("#dash-prayer-grid","#dash-jadwal-meta","#dash-countdown"); loadDashboardData(); startLiveClock(); renderIslamicNote(); return; }
   if(currentView === "user"){ main.innerHTML = `<div class='topbar'><div><p class='eyebrow'>Administrasi Sistem</p><h1>Kelola User</h1></div>${isAdministrator()?`<button class="btn btn-ghost" id="btn-kelola-hak-akses">🔐 Kelola Hak Akses per Role</button>`:``}</div><div id='user-panel'></div>`; $("#btn-kelola-hak-akses")?.addEventListener("click", openHakAksesModal); renderUserManagement(); return; }
   if(currentView === "keuangan"){ initKeuanganView(); return; }
   if(currentView === "jamaah"){ initJamaahView(); return; }
@@ -1430,8 +1459,10 @@ function viewDashboard(){
     <div class="panel"><div class="panel-head"><h3>Jadwal Sholat Hari Ini</h3></div>
       <div class="prayer-grid" id="dash-prayer-grid"><div class="empty-state" style="grid-column:1/-1;">Memuat jadwal…</div></div>
       <p style="font-size:11.5px; color:#8A9895; margin-top:10px;" id="dash-jadwal-meta"></p>
+      <div class="countdown-note" id="dash-countdown"></div>
       <div id="dash-islamic-note"></div>
     </div>
+    <div class="panel"><div class="panel-head"><h3>Jadwal Petugas Jumat Berikutnya</h3></div><div id="dash-khatib-list"><div class="empty-state"><p>Memuat…</p></div></div></div>
     <div class="panel"><div class="panel-head"><h3>Kegiatan Mendatang</h3></div><div id="dash-kegiatan-list"><div class="empty-state"><p>Memuat…</p></div></div></div>
     <div class="panel"><div class="panel-head"><h3>Pengumuman Terbaru</h3></div><div id="dash-pengumuman-list"><div class="empty-state"><p>Memuat…</p></div></div></div>
   `;
@@ -1450,7 +1481,7 @@ function startLiveClock(){
   clockInterval = setInterval(tick, 1000);
 }
 function renderIslamicNote(){
-  const el = $("#dash-islamic-note") || $("#jadwal-islamic-note");
+  const el = $("#dash-islamic-note") || $("#jadwal-islamic-note") || $("#guest-islamic-note");
   if(!el) return;
   const today = new Date(); today.setHours(0,0,0,0);
   const in14 = new Date(today.getTime() + 14*24*3600*1000);
@@ -1468,6 +1499,15 @@ let dashUnsubs = [];
 function loadDashboardData(){
   dashUnsubs.forEach(u=>u());
   dashUnsubs = [];
+  dashUnsubs.push(onSnapshot(query(collection(db,"khatib_jumat"), orderBy("tanggal","asc")), (snap)=>{
+    const today = new Date().toISOString().slice(0,10);
+    const upcoming = snap.docs.map(d=>d.data()).filter(k=>k.tanggal>=today).slice(0,2);
+    const el = $("#dash-khatib-list");
+    if(el){
+      el.innerHTML = upcoming.length===0 ? emptyState("Belum ada jadwal petugas Jumat","Tambahkan di menu Jadwal Sholat.")
+        : upcoming.map(k=>`<div class="announcement"><div class="a-date">${fmtTanggalID(k.tanggal)}</div><div class="a-title">Khatib: ${k.khatib||"-"} · Imam: ${k.imam||"-"}</div><div class="a-body">Qori: ${k.qori||"-"} · Muazin: ${k.muazin||"-"}</div></div>`).join("");
+    }
+  }, ()=>{ const el=$("#dash-khatib-list"); if(el) el.innerHTML = emptyState("Gagal memuat","Cek koneksi atau Firestore Rules."); }));
   dashUnsubs.push(onSnapshot(collection(db,"keuangan"), (snap)=>{
     let masuk=0, keluar=0;
     snap.docs.forEach(d=>{ const t=d.data(); if(t.jenis==="masuk") masuk+=Number(t.jumlah||0); else keluar+=Number(t.jumlah||0); });
@@ -1499,7 +1539,8 @@ function loadDashboardData(){
 const KOTA_KEYWORD = "palembang"; // sesuaikan nanti lewat menu Pengaturan
 let kotaIdCache = null;
 let kotaNamaCache = null;
-async function loadJadwalSholat(gridSelector, metaSelector){
+let lastPrayerTimes = null;
+async function loadJadwalSholat(gridSelector, metaSelector, countdownSelector){
   const grid = $(gridSelector || "#dash-prayer-grid");
   if(!grid) return;
   try{
@@ -1518,14 +1559,84 @@ async function loadJadwalSholat(gridSelector, metaSelector){
     const json = await res.json();
     if(!json.status) throw new Error("gagal ambil jadwal");
     const j = json.data.jadwal;
-    const order = [["Subuh", j.subuh],["Terbit", j.terbit],["Dzuhur", j.dzuhur],["Ashar", j.ashar],["Maghrib", j.maghrib],["Isya", j.isya]];
-    grid.innerHTML = order.map(([label,time])=>`<div class="prayer-cell"><div class="pname">${label}</div><div class="ptime">${time}</div></div>`).join("");
+    lastPrayerTimes = { Subuh:j.subuh, Terbit:j.terbit, Dzuhur:j.dzuhur, Ashar:j.ashar, Maghrib:j.maghrib, Isya:j.isya };
+    const order = [["Subuh","Subuh"],["Terbit","Terbit"],["Dzuhur","Dzuhur"],["Ashar","Ashar"],["Maghrib","Maghrib"],["Isya","Isya"]];
+    grid.innerHTML = order.map(([label,key])=>`<div class="prayer-cell" data-prayer-key="${key}"><div class="pname">${label}</div><div class="ptime">${lastPrayerTimes[key]}</div></div>`).join("");
     const meta = document.querySelector(metaSelector || "#dash-jadwal-meta");
     if(meta) meta.textContent = `Lokasi: ${kotaNamaCache || KOTA_KEYWORD} · Sumber: Kementerian Agama RI, via API MyQuran (api.myquran.com)`;
+    ensurePrayerCountdownTicker();
+    tickPrayerCountdown();
   }catch(e){
     console.error(e);
     grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><p>Jadwal sholat belum bisa dimuat. Cek koneksi atau coba lagi nanti.</p></div>`;
   }
+}
+function computeNextPrayer(times){
+  const now = new Date();
+  const entries = [["Subuh",times.Subuh],["Terbit",times.Terbit],["Dzuhur",times.Dzuhur],["Ashar",times.Ashar],["Maghrib",times.Maghrib],["Isya",times.Isya]].filter(([k,v])=>v);
+  for(const [k,v] of entries){
+    const [h,m] = v.split(":").map(Number);
+    const t = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0);
+    if(t > now) return {key:k, time:t, tomorrow:false};
+  }
+  if(entries.length){
+    const [k,v] = entries[0];
+    const [h,m] = v.split(":").map(Number);
+    const t = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1, h, m, 0);
+    return {key:k, time:t, tomorrow:true};
+  }
+  return null;
+}
+function tickPrayerCountdown(){
+  if(!lastPrayerTimes) return;
+  const next = computeNextPrayer(lastPrayerTimes);
+  $$('.prayer-cell[data-prayer-key]').forEach(el=>{
+    el.classList.toggle('now', !!next && el.dataset.prayerKey===next.key);
+  });
+  $$('.countdown-note').forEach(el=>{
+    if(!next){ el.textContent=""; return; }
+    const diff = next.time - new Date();
+    if(diff<=0){ el.textContent="🕌 Waktunya sholat!"; return; }
+    const hh = String(Math.floor(diff/3600000)).padStart(2,"0");
+    const mm = String(Math.floor((diff%3600000)/60000)).padStart(2,"0");
+    const ss = String(Math.floor((diff%60000)/1000)).padStart(2,"0");
+    el.textContent = `⏳ Menuju ${next.key}${next.tomorrow?' besok':''}: ${hh}:${mm}:${ss}`;
+  });
+}
+let prayerCountdownInterval = null;
+function ensurePrayerCountdownTicker(){
+  if(prayerCountdownInterval) return;
+  prayerCountdownInterval = setInterval(tickPrayerCountdown, 1000);
+}
+let guestUnsubs = [];
+function loadGuestData(){
+  loadJadwalSholat("#guest-prayer-grid","#guest-jadwal-meta","#guest-countdown");
+  renderIslamicNote();
+  guestUnsubs.forEach(u=>u()); guestUnsubs = [];
+  guestUnsubs.push(onSnapshot(query(collection(db,"khatib_jumat"), orderBy("tanggal","asc")), (snap)=>{
+    const today = new Date().toISOString().slice(0,10);
+    const upcoming = snap.docs.map(d=>d.data()).filter(k=>k.tanggal>=today).slice(0,3);
+    const el = $("#guest-khatib-list");
+    if(!el) return;
+    el.innerHTML = upcoming.length===0 ? emptyState("Belum ada jadwal","Jadwal petugas Jumat belum diatur.")
+      : upcoming.map(k=>`<div class="announcement"><div class="a-date">${fmtTanggalID(k.tanggal)}</div><div class="a-title">Khatib: ${k.khatib||"-"} · Imam: ${k.imam||"-"}</div><div class="a-body">Qori: ${k.qori||"-"} · Muazin: ${k.muazin||"-"}</div></div>`).join("");
+  }, ()=>{ const el=$("#guest-khatib-list"); if(el) el.innerHTML = emptyState("Gagal memuat","Coba lagi nanti."); }));
+  guestUnsubs.push(onSnapshot(query(collection(db,"kegiatan"), orderBy("tanggal","asc")), (snap)=>{
+    const today = new Date().toISOString().slice(0,10);
+    const upcoming = snap.docs.map(d=>d.data()).filter(k=>k.tanggal>=today).slice(0,5);
+    const el = $("#guest-kegiatan-list");
+    if(!el) return;
+    el.innerHTML = upcoming.length===0 ? emptyState("Belum ada kegiatan mendatang","Nantikan info kegiatan berikutnya.")
+      : upcoming.map(k=>`<div class="announcement"><div class="a-date">${fmtTanggalID(k.tanggal)}${k.waktu?" · "+k.waktu:""}</div><div class="a-title">${k.nama}</div><div class="a-body">📍 ${k.lokasi||"-"}</div></div>`).join("");
+  }, ()=>{ const el=$("#guest-kegiatan-list"); if(el) el.innerHTML = emptyState("Gagal memuat","Coba lagi nanti."); }));
+  guestUnsubs.push(onSnapshot(query(collection(db,"pengumuman"), orderBy("tanggal","desc")), (snap)=>{
+    const todayStr = new Date().toISOString().slice(0,10);
+    const items = snap.docs.map(d=>d.data()).filter(p=>(p.tanggal||"")<=todayStr).slice(0,5);
+    const el = $("#guest-pengumuman-list");
+    if(!el) return;
+    el.innerHTML = items.length===0 ? emptyState("Belum ada pengumuman","Nantikan info terbaru dari pengurus.")
+      : items.map(p=>`<div class="announcement"><div class="a-date">${fmtTanggalID(p.tanggal)}</div><div class="a-title">${p.judul}</div><div class="a-body">${p.isi}</div></div>`).join("");
+  }, ()=>{ const el=$("#guest-pengumuman-list"); if(el) el.innerHTML = emptyState("Gagal memuat","Coba lagi nanti."); }));
 }
 
 /* ============ KELOLA USER (Admin / God Mode) ============ */
@@ -2241,6 +2352,7 @@ function initJadwalView(){
     <div class="panel"><div class="panel-head"><h3>Jadwal Sholat Hari Ini</h3></div>
       <div class="prayer-grid" id="jadwal-prayer-grid"><div class="empty-state" style="grid-column:1/-1;">Memuat jadwal…</div></div>
       <p style="font-size:11.5px; color:#8A9895; margin-top:10px;" id="jadwal-meta"></p>
+      <div class="countdown-note" id="jadwal-countdown"></div>
       <div id="jadwal-islamic-note"></div>
     </div>
     <div class="panel">
@@ -2248,7 +2360,7 @@ function initJadwalView(){
       <div id="khatib-list"><div class="empty-state"><p>Memuat…</p></div></div>
     </div>
   `;
-  loadJadwalSholat("#jadwal-prayer-grid","#jadwal-meta");
+  loadJadwalSholat("#jadwal-prayer-grid","#jadwal-meta","#jadwal-countdown");
   renderIslamicNote();
   $("#btn-add-khatib")?.addEventListener("click", ()=>openKhatibModal());
   if(khatibUnsub) khatibUnsub();
